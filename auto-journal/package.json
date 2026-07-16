@@ -1,0 +1,12 @@
+{
+  "name": "auto-journal",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Мобильный веб-журнал обслуживания автомобиля с интерактивной 2D-схемой (прототип без бэкенда).",
+  "scripts": {
+    "build": "tsc -p .",
+    "watch": "tsc -p . --watch",
+    "serve": "http-server . -p 8080 -c-1"
+  }
+}
