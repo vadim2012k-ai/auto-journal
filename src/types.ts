@@ -71,7 +71,7 @@ export interface Car {
   brand?: string;
   model?: string;
   engineType?: string;
-  /** Литраж двигателя, л */
+  /** Объём двигателя, л */
   engineVolume?: number;
   /** Мощность двигателя, л.с. */
   enginePower?: number;

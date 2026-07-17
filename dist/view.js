@@ -431,7 +431,7 @@ export function renderSettings(car, cars, account) {
       <label class="settings-field">Тип двигателя
         <input type="text" id="car-engine-type-input" value="${escapeHtml(car.engineType ?? '')}" placeholder="напр. рядный 6-цилиндровый, бензин" />
       </label>
-      <label class="settings-field">Литраж двигателя, л
+      <label class="settings-field">Объём двигателя, л
         <input type="number" id="car-engine-volume-input" step="0.1" min="0" value="${car.engineVolume ?? ''}" placeholder="напр. 2.5" />
       </label>
       <label class="settings-field">Мощность двигателя, л.с.

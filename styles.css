@@ -242,6 +242,12 @@ html, body {
 }
 .icon-btn-sm + .icon-btn-sm { margin-left: 2px; }
 
+/* Своя подсветка нажатия — одинаково для мыши и тач-экрана (см. app.ts) */
+.btn, .nav-btn, .car-row, .journal-row, .filter-chip, .icon-btn, .icon-btn-sm, .auth-tab {
+  transition: opacity 0.08s ease, transform 0.08s ease;
+}
+.pressed { opacity: 0.55; transform: scale(0.98); }
+
 .bottom-nav {
   position: fixed;
   bottom: 0;

@@ -103,7 +103,34 @@ export function mountApp(rootEl: HTMLElement): void {
   root.addEventListener('touchstart', onTouchStart, { passive: true });
   root.addEventListener('touchend', onTouchEnd);
   root.addEventListener('focusin', onFocusIn);
+  root.addEventListener('pointerdown', onPointerDown);
+  root.addEventListener('pointerup', onPointerUp);
+  root.addEventListener('pointercancel', onPointerUp);
+  root.addEventListener('pointerleave', onPointerUp, true);
   render();
+}
+
+// Подсветка нажатия кнопок/карточек своими силами: мы отключили нативный
+// -webkit-tap-highlight-color (убирает уродливую синюю вспышку на тапе),
+// но из-за этого на телефоне пропала вообще любая обратная связь при
+// нажатии — на компьютере её показывает браузер сам, на тач-устройствах
+// нет. Единый JS-обработчик работает одинаково для мыши и пальца.
+const PRESSABLE = '.btn, .nav-btn, .car-row, .journal-row, .filter-chip, .icon-btn, .icon-btn-sm, .auth-tab';
+let pressedEl: HTMLElement | null = null;
+
+function onPointerDown(e: PointerEvent): void {
+  const target = (e.target as HTMLElement).closest<HTMLElement>(PRESSABLE);
+  if (target) {
+    target.classList.add('pressed');
+    pressedEl = target;
+  }
+}
+
+function onPointerUp(): void {
+  if (pressedEl) {
+    pressedEl.classList.remove('pressed');
+    pressedEl = null;
+  }
 }
 
 // При фокусе на числовое поле (пробег и т.п.) выделяем всё содержимое —
