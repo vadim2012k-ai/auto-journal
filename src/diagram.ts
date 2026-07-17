@@ -7,7 +7,8 @@ import type { Car, ZoneId } from './types.js';
 const VB_W = 320;
 const VB_H = 640;
 
-const TIRE_R = 32;
+const TIRE_W = 46;
+const TIRE_H = 74;
 const BRAKE_R = 15;
 const BRAKE_GAP = 2;
 
@@ -16,10 +17,10 @@ function zoneFill(car: Car, zoneId: ZoneId): string {
 }
 
 /**
- * Колесо = одна большая кликабельная шина (с подписью прямо на ней) +
- * отдельный маленький кружок-бейдж тормозов, касающийся её снаружи —
- * это два явно разных круга, а не вложенные друг в друга, чтобы было
- * понятно, куда именно тапаешь.
+ * Колесо = одна большая кликабельная шина в виде прямоугольника (вид
+ * протектора снизу, как у настоящего колеса) + отдельный маленький
+ * кружок-бейдж тормозов, касающийся её снаружи — это два явно разных
+ * элемента, а не вложенные друг в друга, чтобы было понятно, куда тапаешь.
  */
 function wheelGroup(
   wheelZone: ZoneId,
@@ -28,19 +29,13 @@ function wheelGroup(
   cy: number,
   tireFill: string,
   brakeFill: string,
-  line1: string,
-  line2: string,
   badgeDir: 'above' | 'below',
 ): string {
-  const badgeOffset = TIRE_R + BRAKE_R + BRAKE_GAP;
+  const badgeOffset = TIRE_H / 2 + BRAKE_R + BRAKE_GAP;
   const badgeCy = badgeDir === 'below' ? cy + badgeOffset : cy - badgeOffset;
   return `
       <g class="zone" data-zone="${wheelZone}" tabindex="0">
-        <circle cx="${cx}" cy="${cy}" r="${TIRE_R}" fill="${tireFill}" fill-opacity="0.8" stroke="#0f172a" stroke-width="1.5"/>
-        <text x="${cx}" y="${cy - 6}" text-anchor="middle" class="diagram-wheel-label">
-          <tspan x="${cx}">${line1}</tspan>
-          <tspan x="${cx}" dy="13">${line2}</tspan>
-        </text>
+        <rect x="${cx - TIRE_W / 2}" y="${cy - TIRE_H / 2}" width="${TIRE_W}" height="${TIRE_H}" rx="10" fill="${tireFill}" fill-opacity="0.8" stroke="#0f172a" stroke-width="1.5"/>
       </g>
       <g class="zone" data-zone="${brakeZone}" tabindex="0">
         <circle cx="${cx}" cy="${badgeCy}" r="${BRAKE_R}" fill="${brakeFill}" fill-opacity="0.9" stroke="#0f172a" stroke-width="1.5"/>
@@ -179,14 +174,14 @@ export function renderCarDiagram(car: Car): string {
     </g>
 
     <!-- Передняя ось: колёса + тормоза -->
-    ${wheelGroup('wheel_fl', 'brakes_front', 58, 150, tireFlFill, brakesFrontFill, 'Переднее', 'левое', 'below')}
-    ${wheelGroup('wheel_fr', 'brakes_front', 262, 150, tireFrFill, brakesFrontFill, 'Переднее', 'правое', 'below')}
+    ${wheelGroup('wheel_fl', 'brakes_front', 58, 150, tireFlFill, brakesFrontFill, 'below')}
+    ${wheelGroup('wheel_fr', 'brakes_front', 262, 150, tireFrFill, brakesFrontFill, 'below')}
 
     ${drivetrainBoxes(car, gearboxFill)}
 
     <!-- Задняя ось: колёса + тормоза -->
-    ${wheelGroup('wheel_rl', 'brakes_rear', 58, 480, tireRlFill, brakesRearFill, 'Заднее', 'левое', 'above')}
-    ${wheelGroup('wheel_rr', 'brakes_rear', 262, 480, tireRrFill, brakesRearFill, 'Заднее', 'правое', 'above')}
+    ${wheelGroup('wheel_rl', 'brakes_rear', 58, 480, tireRlFill, brakesRearFill, 'above')}
+    ${wheelGroup('wheel_rr', 'brakes_rear', 262, 480, tireRrFill, brakesRearFill, 'above')}
 
     <!-- Бензобак (декоративно) -->
     <rect x="130" y="530" width="60" height="70" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1.5"/>
