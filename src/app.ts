@@ -102,7 +102,18 @@ export function mountApp(rootEl: HTMLElement): void {
   root.addEventListener('input', onInput);
   root.addEventListener('touchstart', onTouchStart, { passive: true });
   root.addEventListener('touchend', onTouchEnd);
+  root.addEventListener('focusin', onFocusIn);
   render();
+}
+
+// При фокусе на числовое поле (пробег и т.п.) выделяем всё содержимое —
+// иначе новые цифры дописываются к старому значению (например, к "0"),
+// а не заменяют его.
+function onFocusIn(e: FocusEvent): void {
+  const target = e.target as HTMLElement;
+  if (target instanceof HTMLInputElement && target.classList.contains('num-spaced')) {
+    target.select();
+  }
 }
 
 let swipeStartX = 0;
