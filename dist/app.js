@@ -109,8 +109,17 @@ function render() {
         page = renderFuel(car, getFuelRecordsForCar(car.id));
     else if (ui.route === 'service')
         page = renderService();
-    else
-        page = renderSettings(car, getAllCars(), getCurrentAccount());
+    else {
+        const account = getCurrentAccount();
+        if (!account) {
+            // Сессия испорчена/устарела (например, после смены версии в кэше браузера) —
+            // вместо падения молча возвращаем на экран входа.
+            logout();
+            location.reload();
+            return;
+        }
+        page = renderSettings(car, getAllCars(), account);
+    }
     let overlay = '';
     if (ui.formCategory) {
         const editingRecord = ui.editingRecordId ? getRecordById(ui.editingRecordId) : undefined;
