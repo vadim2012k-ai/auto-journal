@@ -1,7 +1,7 @@
 import { mountApp } from './app.js';
 import { initForAccount } from './store.js';
-import { getAccountById, getSessionAccountId, login, register } from './auth.js';
-import { renderAuthScreen, type AuthMode } from './authView.js';
+import { getAccountById, getSessionAccountId, isStorageAvailable, login, register } from './auth.js';
+import { renderAuthScreen, renderStorageBlocked, type AuthMode } from './authView.js';
 
 const root = document.getElementById('app');
 
@@ -59,9 +59,23 @@ function wireAuthEvents(mode: AuthMode): void {
   });
 }
 
-const sessionId = getSessionAccountId();
-if (sessionId != null && getAccountById(sessionId)) {
-  startApp(sessionId);
-} else {
-  renderAuth('login', null);
+function renderStorageBlockedScreen(): void {
+  if (!root) return;
+  root.innerHTML = renderStorageBlocked();
+  root.querySelector('[data-storage-retry]')?.addEventListener('click', () => location.reload());
 }
+
+function boot(): void {
+  if (!isStorageAvailable()) {
+    renderStorageBlockedScreen();
+    return;
+  }
+  const sessionId = getSessionAccountId();
+  if (sessionId != null && getAccountById(sessionId)) {
+    startApp(sessionId);
+  } else {
+    renderAuth('login', null);
+  }
+}
+
+boot();

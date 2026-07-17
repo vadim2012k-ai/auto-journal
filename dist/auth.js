@@ -5,6 +5,24 @@ const AUTH_KEY = 'auto-journal-accounts-v1';
 const SESSION_KEY = 'auto-journal-session-v1';
 const LEGACY_DATA_KEY = 'auto-journal-data-v1';
 const FIRST_ID = 100001;
+const STORAGE_TEST_KEY = '__auto_journal_storage_test__';
+/**
+ * Некоторые браузеры/настройки приватности (например, "Блокировать все
+ * cookie" в Safari) тихо отключают localStorage — записи как бы проходят,
+ * но ничего не сохраняется. Проверяем это явно, чтобы не давать ложное
+ * "аккаунт создан", после которого данные пропадают.
+ */
+export function isStorageAvailable() {
+    try {
+        localStorage.setItem(STORAGE_TEST_KEY, '1');
+        const ok = localStorage.getItem(STORAGE_TEST_KEY) === '1';
+        localStorage.removeItem(STORAGE_TEST_KEY);
+        return ok;
+    }
+    catch {
+        return false;
+    }
+}
 function loadAuth() {
     try {
         const raw = localStorage.getItem(AUTH_KEY);
@@ -43,6 +61,12 @@ function toPublicAccount(a) {
     return { id: a.id, email: a.email, createdAt: a.createdAt };
 }
 export async function register(email, password) {
+    if (!isStorageAvailable()) {
+        return {
+            ok: false,
+            error: 'Браузер блокирует сохранение данных сайта (localStorage). Проверьте настройки приватности — например, в Safari отключите «Блокировать все cookie» для этого сайта — и попробуйте снова.',
+        };
+    }
     const normalized = normalizeEmail(email);
     if (!normalized || !normalized.includes('@'))
         return { ok: false, error: 'Введите корректный email' };
@@ -66,6 +90,15 @@ export async function register(email, password) {
     auth.nextId += 1;
     saveAuth(auth);
     setSession(account.id);
+    // Перечитываем то, что реально сохранилось — если браузер тихо не
+    // записал (например, переполнено хранилище), честно сообщаем об этом,
+    // а не делаем вид, что всё получилось.
+    if (getSessionAccountId() !== account.id || !getAccountById(account.id)) {
+        return {
+            ok: false,
+            error: 'Не удалось сохранить аккаунт в этом браузере. Попробуйте другой браузер или освободите память устройства.',
+        };
+    }
     // Если это самый первый аккаунт на этом устройстве и уже есть данные,
     // накопленные до появления авторизации — переносим их этому аккаунту,
     // чтобы ничего не потерялось.

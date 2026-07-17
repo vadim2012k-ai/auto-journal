@@ -1,5 +1,29 @@
 export type AuthMode = 'login' | 'register';
 
+export function renderStorageBlocked(): string {
+  return `
+  <div class="auth-screen">
+    <div class="auth-card">
+      <div class="auth-title">⚠️ Хранилище браузера недоступно</div>
+      <p class="hint">
+        Этот сайт хранит аккаунт и все данные прямо в браузере (localStorage), без сервера.
+        Сейчас браузер блокирует такое сохранение — поэтому регистрация/вход не запоминаются,
+        а данные пропадают.
+      </p>
+      <p class="hint">Что попробовать:</p>
+      <p class="hint">
+        • В Safari: Настройки → Safari → отключите «Блокировать все cookie»
+        (или разрешите cookie/данные сайтов для этого адреса).<br/>
+        • Отключите приватный/инкогнито-режим, если он включён.<br/>
+        • Проверьте, не переполнена ли память устройства.<br/>
+        • Если сайт открыт внутри другого приложения (например, встроенный браузер Т-Банка,
+        Telegram и т.п.) — откройте ссылку в обычном Safari/Chrome.
+      </p>
+      <button type="button" class="btn btn-primary btn-block" data-storage-retry>Проверить снова</button>
+    </div>
+  </div>`;
+}
+
 export function renderAuthScreen(mode: AuthMode, error: string | null): string {
   const isLogin = mode === 'login';
   return `
