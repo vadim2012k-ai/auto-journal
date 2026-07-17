@@ -184,10 +184,17 @@ function render(): void {
   else {
     const account = getCurrentAccount();
     if (!account) {
-      // Сессия испорчена/устарела (например, после смены версии в кэше браузера) —
-      // вместо падения молча возвращаем на экран входа.
-      logout();
-      location.reload();
+      // Временная диагностика: показываем, что реально лежит в localStorage
+      // в момент сбоя, вместо того чтобы тихо перезагружать страницу.
+      const rawSession = localStorage.getItem('auto-journal-session-v1');
+      const rawAuth = localStorage.getItem('auto-journal-accounts-v1');
+      alert(
+        `ДИАГНОСТИКА (сфотографируйте это окно):\n\n` +
+          `session key = ${rawSession}\n` +
+          `accounts key существует = ${rawAuth !== null}\n` +
+          `accounts длина = ${rawAuth ? rawAuth.length : 'нет ключа'}\n` +
+          `accounts содержимое = ${rawAuth ? rawAuth.slice(0, 300) : '—'}`,
+      );
       return;
     }
     page = renderSettings(car, getAllCars(), account);
