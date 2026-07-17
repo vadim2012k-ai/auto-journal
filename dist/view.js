@@ -1,8 +1,9 @@
 import { CATEGORIES, JOURNAL_GROUPS, SEASON_LABELS, STATUS_COLORS, STATUS_LABELS, ZONES } from './config.js';
 import { renderCarDiagram } from './diagram.js';
 import { categoryStatus, kmLeft } from './status.js';
-import { formatDate, formatDigitsWithSpaces, formatKm, todayIso } from './format.js';
+import { formatDate, formatDigitsWithSpaces, formatKm, formatMoney, todayIso } from './format.js';
 import { getAllRecordsForCar, getRecordsForCategory } from './store.js';
+import { avgConsumption, avgConsumptionThisMonth, avgCostPerMonth, avgPricePerLiter, consumptionSpike, costPerKm, estimateRange, fuelIntervals, totalCostThisMonth, } from './fuel.js';
 function statusChip(statusKey) {
     const color = STATUS_COLORS[statusKey];
     const label = STATUS_LABELS[statusKey];
@@ -12,6 +13,7 @@ export function bottomNav(active) {
     const items = [
         { r: 'home', icon: '🚗', label: 'Гараж' },
         { r: 'journal', icon: '📖', label: 'Журнал' },
+        { r: 'fuel', icon: '⛽', label: 'Топливо' },
         { r: 'service', icon: '📅', label: 'Сервис' },
         { r: 'settings', icon: '⚙️', label: 'Настройки' },
     ];
@@ -45,15 +47,22 @@ function specsLine(car) {
         car.engineType,
         car.engineVolume ? `${car.engineVolume} л` : '',
         car.enginePower ? `${car.enginePower} л.с.` : '',
-        car.fuelConsumption ? `${car.fuelConsumption} л/100км` : '',
     ].filter(Boolean);
     return `<div class="specs-line">${items.map(escapeHtml).join(' · ')}</div>`;
 }
-export function renderHome(car) {
+function carDots(cars, activeCarId) {
+    if (cars.length < 2)
+        return '';
+    return `<div class="car-dots">
+    ${cars.map((c) => `<span class="car-dot ${c.id === activeCarId ? 'car-dot-active' : ''}"></span>`).join('')}
+  </div>`;
+}
+export function renderHome(car, cars) {
     return `
-  <header class="topbar">
+  <header class="topbar" data-car-swipe>
     <div>
       <div class="topbar-title">${escapeHtml(car.name)}</div>
+      ${carDots(cars, car.id)}
     </div>
   </header>
 
@@ -250,16 +259,154 @@ export function renderJournal(car, filter) {
             : rowsHtml}
   </div>`;
 }
+function fuelStat(value, label) {
+    return `<div class="fuel-stat"><div class="fuel-stat-value">${value}</div><div class="fuel-stat-label">${label}</div></div>`;
+}
+export function renderFuel(car, fuelRecords) {
+    const intervals = fuelIntervals(fuelRecords);
+    const allTimeAvg = avgConsumption(intervals);
+    const monthAvg = avgConsumptionThisMonth(intervals);
+    const monthCost = totalCostThisMonth(fuelRecords);
+    const perMonthCost = avgCostPerMonth(fuelRecords);
+    const perKm = costPerKm(intervals);
+    const avgPrice = avgPricePerLiter(fuelRecords);
+    const range = estimateRange(car, fuelRecords, allTimeAvg);
+    const spike = consumptionSpike(intervals);
+    const sortedDesc = [...fuelRecords].sort((a, b) => b.mileage - a.mileage || b.createdAt - a.createdAt);
+    const intervalByRecordId = new Map(intervals.map((i) => [i.record.id, i]));
+    const statsHtml = `<div class="fuel-stats-grid">
+    ${fuelStat(allTimeAvg ? `${allTimeAvg.toFixed(1)}` : '—', 'л/100км, всего')}
+    ${fuelStat(monthAvg ? `${monthAvg.toFixed(1)}` : '—', 'л/100км, за месяц')}
+    ${fuelStat(formatMoney(monthCost), 'потрачено в этом месяце')}
+    ${fuelStat(perMonthCost ? formatMoney(perMonthCost) : '—', 'в среднем в месяц')}
+    ${fuelStat(perKm ? `${perKm.toFixed(2)} ₽` : '—', 'стоимость 1 км')}
+    ${fuelStat(range ? `~${formatKm(range.remainingKm)}` : '—', car.tankCapacity ? 'запас хода' : 'запас хода (укажите бак в настройках)')}
+  </div>`;
+    const alertHtml = spike
+        ? `<div class="fuel-alert">⚠️ Расход вырос: последняя заправка — ${spike.last.toFixed(1)} л/100км, обычно ~${spike.avgBefore.toFixed(1)} л/100км</div>`
+        : '';
+    const tripHtml = `<div class="odometer-card">
+    <label for="trip-distance-input">Поездка в другой город — расход и стоимость</label>
+    <div class="odometer-row">
+      <input id="trip-distance-input" type="number" inputmode="numeric" min="0" placeholder="расстояние, км"
+        data-avg-consumption="${allTimeAvg ?? ''}" data-avg-price="${avgPrice ?? ''}" />
+      <span>км</span>
+    </div>
+    <p class="hint" id="trip-result">${allTimeAvg && avgPrice ? 'Введите расстояние — посчитаю расход и стоимость' : 'Нужно минимум 2 заправки для расчёта'}</p>
+  </div>`;
+    const historyHtml = sortedDesc.length === 0
+        ? `<p class="hint">Пока нет ни одной заправки. Добавьте первую кнопкой выше.</p>`
+        : `<div class="journal-list">
+    ${sortedDesc
+            .map((r) => {
+            const interval = intervalByRecordId.get(r.id);
+            const pricePerLiter = r.liters > 0 ? r.cost / r.liters : 0;
+            return `<div class="journal-row">
+              <div class="item-main">
+                <div class="item-title">⛽ Заправка</div>
+                <div class="item-sub">${formatDate(r.date)} · ${formatKm(r.mileage)} · ${r.liters.toFixed(1)} л · ${formatMoney(r.cost)} (${pricePerLiter.toFixed(1)} ₽/л)${interval ? ' · ' + interval.consumption.toFixed(1) + ' л/100км' : ''}</div>
+              </div>
+              <span>
+                <button class="icon-btn-sm" data-edit-fuel data-id="${r.id}" aria-label="Редактировать">✏️</button>
+                <button class="icon-btn-sm" data-delete-fuel data-id="${r.id}" aria-label="Удалить">🗑</button>
+              </span>
+            </div>`;
+        })
+            .join('')}
+  </div>`;
+    return `
+  <header class="topbar"><div class="topbar-title">Топливо</div></header>
+  ${statsHtml}
+  ${alertHtml}
+  <button class="btn btn-primary btn-block" data-add-fuel>+ Добавить заправку</button>
+  ${tripHtml}
+  ${historyHtml}
+  `;
+}
+export function renderFuelForm(car, record) {
+    const isEdit = !!record;
+    const pricePerLiter = isEdit && record.liters > 0 ? (record.cost / record.liters).toFixed(2) : '';
+    return `
+  <div class="sheet-backdrop" data-close-fuel-form></div>
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <h2>⛽ ${isEdit ? 'Редактирование заправки' : 'Новая заправка'}</h2>
+      <button class="icon-btn" data-close-fuel-form aria-label="Закрыть">✕</button>
+    </div>
+    <form class="sheet-body" id="fuel-form" ${isEdit ? `data-record-id="${record.id}"` : ''}>
+      <label>Дата
+        <input type="date" name="date" value="${isEdit ? record.date : todayIso()}" required />
+      </label>
+      <label>Пробег на одометре, км
+        <input type="text" name="mileage" class="num-spaced" inputmode="numeric" value="${formatDigitsWithSpaces(String(isEdit ? record.mileage : car.odometer))}" required />
+      </label>
+      <label>Залито литров
+        <input type="number" name="liters" class="fuel-calc-field" data-fuel-field="liters" step="0.01" min="0" inputmode="decimal" value="${isEdit ? record.liters : ''}" placeholder="напр. 38.5" required />
+      </label>
+      <label>Стоимость заправки, ₽
+        <input type="number" name="cost" class="fuel-calc-field" data-fuel-field="cost" step="1" min="0" inputmode="numeric" value="${isEdit ? record.cost : ''}" placeholder="напр. 2300" required />
+      </label>
+      <label>Цена за литр, ₽/л
+        <input type="number" name="pricePerLiter" class="fuel-calc-field" data-fuel-field="price" step="0.01" min="0" inputmode="decimal" value="${pricePerLiter}" placeholder="напр. 59.7" required />
+      </label>
+      <p class="hint">Заполните любые два поля из трёх — третье посчитается само.</p>
+      <button type="submit" class="btn btn-primary btn-block">${isEdit ? 'Сохранить изменения' : 'Сохранить заправку'}</button>
+    </form>
+  </div>`;
+}
 export function renderService() {
     return `
   <header class="topbar"><div class="topbar-title">Записаться в сервис</div></header>
   <p class="hint">Здесь появится запись на СТО. Пока раздел пустой — обсудим и добавим функционал позже.</p>
   `;
 }
-export function renderSettings(car) {
+function renderCarSwitcher(cars, activeCarId) {
+    const rows = cars
+        .map((c) => {
+        const isActive = c.id === activeCarId;
+        const subtitle = [c.brand, c.model].filter(Boolean).join(' ');
+        return `<div class="car-row ${isActive ? 'car-row-active' : ''}" ${isActive ? '' : `data-switch-car data-id="${c.id}"`}>
+        <div class="item-main">
+          <div class="item-title">${isActive ? '✓ ' : ''}${escapeHtml(c.name)}</div>
+          ${subtitle ? `<div class="item-sub">${escapeHtml(subtitle)}</div>` : ''}
+        </div>
+        ${cars.length > 1 ? `<button class="icon-btn-sm" data-delete-car data-id="${c.id}" aria-label="Удалить автомобиль">🗑</button>` : ''}
+      </div>`;
+    })
+        .join('');
+    return `
+    <div class="settings-section">
+      <h3>Мои автомобили</h3>
+      <div class="car-list">${rows}</div>
+      <button class="btn btn-secondary btn-block" data-add-car>+ Добавить автомобиль</button>
+      <p class="hint">Название и характеристики ниже относятся к выбранному (отмеченному ✓) автомобилю. Переключайтесь, нажимая на другой автомобиль в списке.</p>
+    </div>`;
+}
+export function renderCarForm() {
+    return `
+  <div class="sheet-backdrop" data-close-car-form></div>
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <h2>🚗 Новый автомобиль</h2>
+      <button class="icon-btn" data-close-car-form aria-label="Закрыть">✕</button>
+    </div>
+    <form class="sheet-body" id="car-form">
+      <label>Название автомобиля
+        <input type="text" name="name" placeholder="напр. Toyota Mark II" required />
+      </label>
+      <p class="hint">Остальные характеристики и историю обслуживания можно будет заполнить после создания.</p>
+      <button type="submit" class="btn btn-primary btn-block">Добавить</button>
+    </form>
+  </div>`;
+}
+export function renderSettings(car, cars) {
     return `
   <header class="topbar"><div class="topbar-title">Настройки</div></header>
   <div class="settings-list">
+    ${renderCarSwitcher(cars, car.id)}
+
     <label class="settings-field">Название автомобиля
       <input type="text" id="car-name-input" value="${escapeHtml(car.name)}" />
     </label>
@@ -281,8 +428,8 @@ export function renderSettings(car) {
       <label class="settings-field">Мощность двигателя, л.с.
         <input type="number" id="car-engine-power-input" min="0" value="${car.enginePower ?? ''}" placeholder="напр. 280" />
       </label>
-      <label class="settings-field">Средний расход топлива, л/100км
-        <input type="number" id="car-fuel-consumption-input" step="0.1" min="0" value="${car.fuelConsumption ?? ''}" placeholder="напр. 8.5" />
+      <label class="settings-field">Объём топливного бака, л
+        <input type="number" id="car-tank-capacity-input" step="1" min="0" value="${car.tankCapacity ?? ''}" placeholder="напр. 55" />
       </label>
       <p class="hint">Привод: задний (RWD)</p>
     </div>

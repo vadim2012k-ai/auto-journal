@@ -1,6 +1,9 @@
 export function formatKm(n) {
     return new Intl.NumberFormat('ru-RU').format(Math.round(n)) + ' км';
 }
+export function formatMoney(n) {
+    return new Intl.NumberFormat('ru-RU').format(Math.round(n)) + ' ₽';
+}
 /** Разбивает цифры пробелами по тысячам для отображения в редактируемом поле, напр. "123456" -> "123 456" */
 export function formatDigitsWithSpaces(digits) {
     return digits.replace(/\D/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, ' ');

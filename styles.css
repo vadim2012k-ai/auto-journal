@@ -43,9 +43,19 @@ html, body {
   align-items: center;
   justify-content: space-between;
   padding: 8px 0 16px;
+  touch-action: pan-y;
 }
 .topbar-title { font-size: 22px; font-weight: 700; }
 .topbar-sub { font-size: 13px; color: var(--text-dim); margin-top: 2px; }
+
+.car-dots { display: flex; gap: 6px; margin-top: 6px; touch-action: pan-y; }
+.car-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border);
+}
+.car-dot-active { background: var(--accent); width: 16px; border-radius: 3px; }
 
 .specs-line { font-size: 13px; color: var(--text); font-weight: 600; margin-bottom: 12px; }
 
@@ -84,7 +94,8 @@ html, body {
 .diagram-label-lg { font-size: 16px; }
 .diagram-sublabel { fill: #cbd5e1; font-size: 11px; }
 .diagram-caption { fill: #475569; font-size: 10px; letter-spacing: 2px; }
-.diagram-wheel-label { fill: #1a1a1a; font-size: 9px; font-weight: 500; }
+.diagram-wheel-label { fill: #0b1220; font-size: 10px; font-weight: 600; }
+.diagram-badge-icon { font-size: 13px; }
 
 .legend {
   display: flex;
@@ -98,6 +109,31 @@ html, body {
 .legend-item i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 
 .hint { color: var(--text-dim); font-size: 13px; line-height: 1.5; padding: 4px 2px; }
+
+.fuel-stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.fuel-stat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+.fuel-stat-value { font-size: 19px; font-weight: 700; }
+.fuel-stat-label { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+
+.fuel-alert {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
 
 .chip {
   display: inline-flex;
@@ -127,6 +163,20 @@ html, body {
 
 .zone-item { padding: 6px 0; }
 .zone-sep { border: none; border-top: 1px solid var(--border); margin: 8px 0; }
+
+.car-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.car-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+.car-row-active { border-color: var(--accent); cursor: default; }
 
 .history-details { margin-top: 6px; }
 .history-details summary { color: var(--accent-2); font-size: 13px; cursor: pointer; }

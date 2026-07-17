@@ -10,7 +10,7 @@ function defaultData() {
         odometer: 0,
         createdAt: Date.now(),
     };
-    return { cars: [car], activeCarId: car.id, records: [] };
+    return { cars: [car], activeCarId: car.id, records: [], fuel: [] };
 }
 let data = load();
 function load() {
@@ -21,6 +21,9 @@ function load() {
         const parsed = JSON.parse(raw);
         if (!parsed.cars || parsed.cars.length === 0)
             return defaultData();
+        // Миграция старых сохранений — раздел "Топливо" появился позже.
+        if (!Array.isArray(parsed.fuel))
+            parsed.fuel = [];
         return parsed;
     }
     catch {
@@ -50,6 +53,37 @@ export function getActiveCar() {
     const fallback = data.cars[0];
     data.activeCarId = fallback.id;
     return fallback;
+}
+export function getAllCars() {
+    return data.cars;
+}
+export function addCar(name) {
+    const car = {
+        id: uid(),
+        name,
+        driveType: 'rwd',
+        odometer: 0,
+        createdAt: Date.now(),
+    };
+    data.cars.push(car);
+    data.activeCarId = car.id;
+    notify();
+}
+export function switchCar(carId) {
+    if (!data.cars.some((c) => c.id === carId))
+        return;
+    data.activeCarId = carId;
+    notify();
+}
+export function deleteCar(carId) {
+    if (data.cars.length <= 1)
+        return; // всегда должен остаться хотя бы один автомобиль
+    data.cars = data.cars.filter((c) => c.id !== carId);
+    data.records = data.records.filter((r) => r.carId !== carId);
+    data.fuel = data.fuel.filter((f) => f.carId !== carId);
+    if (data.activeCarId === carId)
+        data.activeCarId = data.cars[0].id;
+    notify();
 }
 export function updateCar(patch) {
     const car = getActiveCar();
@@ -95,6 +129,36 @@ export function updateRecord(id, patch) {
         car.odometer = rec.mileage;
     notify();
 }
+export function getFuelRecordsForCar(carId) {
+    return data.fuel
+        .filter((f) => f.carId === carId)
+        .sort((a, b) => b.mileage - a.mileage || b.createdAt - a.createdAt);
+}
+export function getFuelRecordById(id) {
+    return data.fuel.find((f) => f.id === id);
+}
+export function addFuelRecord(input) {
+    const rec = { ...input, id: uid(), createdAt: Date.now() };
+    data.fuel.push(rec);
+    const car = data.cars.find((c) => c.id === input.carId);
+    if (car && input.mileage > car.odometer)
+        car.odometer = input.mileage;
+    notify();
+}
+export function updateFuelRecord(id, patch) {
+    const rec = data.fuel.find((f) => f.id === id);
+    if (!rec)
+        return;
+    Object.assign(rec, patch);
+    const car = data.cars.find((c) => c.id === rec.carId);
+    if (car && rec.mileage > car.odometer)
+        car.odometer = rec.mileage;
+    notify();
+}
+export function deleteFuelRecord(id) {
+    data.fuel = data.fuel.filter((f) => f.id !== id);
+    notify();
+}
 export function exportJson() {
     return JSON.stringify(data, null, 2);
 }
@@ -102,6 +166,8 @@ export function importJson(json) {
     const parsed = JSON.parse(json);
     if (!parsed.cars || !Array.isArray(parsed.records))
         throw new Error('Некорректный файл');
+    if (!Array.isArray(parsed.fuel))
+        parsed.fuel = [];
     data = parsed;
     notify();
 }

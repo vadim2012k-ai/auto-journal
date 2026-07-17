@@ -70,12 +70,25 @@ export interface Car {
   engineVolume?: number;
   /** Мощность двигателя, л.с. */
   enginePower?: number;
-  /** Средний расход топлива, л/100км */
-  fuelConsumption?: number;
+  /** Объём топливного бака, л — нужен для расчёта запаса хода */
+  tankCapacity?: number;
+}
+
+/** Запись о заправке: пробег на одометре, сколько литров залито и за сколько */
+export interface FuelRecord {
+  id: string;
+  carId: string;
+  date: string; // YYYY-MM-DD
+  mileage: number;
+  liters: number;
+  /** Общая сумма заправки, ₽ */
+  cost: number;
+  createdAt: number;
 }
 
 export interface AppData {
   cars: Car[];
   activeCarId: string | null;
   records: MaintenanceRecord[];
+  fuel: FuelRecord[];
 }

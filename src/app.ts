@@ -1,17 +1,29 @@
 import {
+  addCar,
+  addFuelRecord,
   addRecord,
+  deleteCar,
+  deleteFuelRecord,
   deleteRecord,
   exportJson,
   getActiveCar,
+  getAllCars,
+  getFuelRecordById,
+  getFuelRecordsForCar,
   getRecordById,
   importJson,
   resetAll,
   subscribe,
+  switchCar,
   updateCar,
+  updateFuelRecord,
   updateRecord,
 } from './store.js';
 import {
   bottomNav,
+  renderCarForm,
+  renderFuel,
+  renderFuelForm,
   renderHome,
   renderJournal,
   renderService,
@@ -31,12 +43,51 @@ function tireScopePositions(scope: string, base: WheelPosition): WheelPosition[]
   return [base];
 }
 
+type FuelField = 'liters' | 'cost' | 'price';
+
+// Порядок полей формы заправки, тронутых пользователем (старые — в начале).
+// Сбрасывается при каждом открытии формы заправки.
+let fuelTouchOrder: FuelField[] = [];
+
+function onFuelFieldInput(field: FuelField, form: HTMLFormElement): void {
+  fuelTouchOrder = fuelTouchOrder.filter((f) => f !== field);
+  fuelTouchOrder.push(field);
+
+  const litersEl = form.querySelector<HTMLInputElement>('[data-fuel-field="liters"]');
+  const costEl = form.querySelector<HTMLInputElement>('[data-fuel-field="cost"]');
+  const priceEl = form.querySelector<HTMLInputElement>('[data-fuel-field="price"]');
+  if (!litersEl || !costEl || !priceEl) return;
+
+  const liters = Number(litersEl.value);
+  const cost = Number(costEl.value);
+  const price = Number(priceEl.value);
+  const valid = (n: number) => Number.isFinite(n) && n > 0;
+
+  const allFields: FuelField[] = ['liters', 'cost', 'price'];
+  const untouched = allFields.filter((f) => !fuelTouchOrder.includes(f));
+  let target: FuelField | null = null;
+  if (untouched.length === 1) target = untouched[0];
+  else if (fuelTouchOrder.length === 3) target = fuelTouchOrder[0];
+  if (!target) return;
+
+  if (target === 'cost' && valid(liters) && valid(price)) {
+    costEl.value = (liters * price).toFixed(0);
+  } else if (target === 'liters' && valid(cost) && valid(price)) {
+    litersEl.value = (cost / price).toFixed(2);
+  } else if (target === 'price' && valid(liters) && valid(cost)) {
+    priceEl.value = (cost / liters).toFixed(2);
+  }
+}
+
 const ui: UiState = {
   route: 'home',
   activeZone: null,
   formCategory: null,
   editingRecordId: null,
   journalFilter: null,
+  fuelFormOpen: false,
+  editingFuelId: null,
+  carFormOpen: false,
 };
 
 let root: HTMLElement;
@@ -48,16 +99,50 @@ export function mountApp(rootEl: HTMLElement): void {
   root.addEventListener('submit', onSubmit as EventListener);
   root.addEventListener('change', onChange);
   root.addEventListener('input', onInput);
+  root.addEventListener('touchstart', onTouchStart, { passive: true });
+  root.addEventListener('touchend', onTouchEnd);
   render();
+}
+
+let swipeStartX = 0;
+let swipeStartY = 0;
+let swipeActive = false;
+
+function onTouchStart(e: TouchEvent): void {
+  const target = (e.target as HTMLElement).closest('[data-car-swipe]');
+  if (!target || e.touches.length !== 1) {
+    swipeActive = false;
+    return;
+  }
+  swipeActive = true;
+  swipeStartX = e.touches[0].clientX;
+  swipeStartY = e.touches[0].clientY;
+}
+
+function onTouchEnd(e: TouchEvent): void {
+  if (!swipeActive) return;
+  swipeActive = false;
+  const touch = e.changedTouches[0];
+  const dx = touch.clientX - swipeStartX;
+  const dy = touch.clientY - swipeStartY;
+  if (Math.abs(dx) < 45 || Math.abs(dx) < Math.abs(dy) * 1.4) return;
+
+  const cars = getAllCars();
+  if (cars.length < 2) return;
+  const idx = cars.findIndex((c) => c.id === getActiveCar().id);
+  if (idx === -1) return;
+  const nextIdx = dx < 0 ? (idx + 1) % cars.length : (idx - 1 + cars.length) % cars.length;
+  switchCar(cars[nextIdx].id);
 }
 
 function render(): void {
   const car = getActiveCar();
   let page = '';
-  if (ui.route === 'home') page = renderHome(car);
+  if (ui.route === 'home') page = renderHome(car, getAllCars());
   else if (ui.route === 'journal') page = renderJournal(car, ui.journalFilter);
+  else if (ui.route === 'fuel') page = renderFuel(car, getFuelRecordsForCar(car.id));
   else if (ui.route === 'service') page = renderService();
-  else page = renderSettings(car);
+  else page = renderSettings(car, getAllCars());
 
   let overlay = '';
   if (ui.formCategory) {
@@ -65,6 +150,11 @@ function render(): void {
     overlay = renderRecordForm(car, ui.formCategory.category, ui.formCategory.position, editingRecord);
   } else if (ui.activeZone) {
     overlay = renderZonePanel(car, ui.activeZone);
+  } else if (ui.fuelFormOpen) {
+    const editingFuel = ui.editingFuelId ? getFuelRecordById(ui.editingFuelId) : undefined;
+    overlay = renderFuelForm(car, editingFuel);
+  } else if (ui.carFormOpen) {
+    overlay = renderCarForm();
   }
 
   root.innerHTML = `
@@ -91,6 +181,9 @@ function onClick(e: MouseEvent): void {
     ui.activeZone = null;
     ui.formCategory = null;
     ui.editingRecordId = null;
+    ui.fuelFormOpen = false;
+    ui.editingFuelId = null;
+    ui.carFormOpen = false;
     render();
     return;
   }
@@ -147,6 +240,66 @@ function onClick(e: MouseEvent): void {
     return;
   }
 
+  if (target.closest('[data-add-fuel]')) {
+    ui.fuelFormOpen = true;
+    ui.editingFuelId = null;
+    fuelTouchOrder = [];
+    render();
+    return;
+  }
+
+  if (target.closest('[data-close-fuel-form]')) {
+    ui.fuelFormOpen = false;
+    ui.editingFuelId = null;
+    render();
+    return;
+  }
+
+  const editFuelBtn = target.closest<HTMLElement>('[data-edit-fuel]');
+  if (editFuelBtn) {
+    ui.editingFuelId = editFuelBtn.dataset.id!;
+    ui.fuelFormOpen = true;
+    fuelTouchOrder = [];
+    render();
+    return;
+  }
+
+  const delFuelBtn = target.closest<HTMLElement>('[data-delete-fuel]');
+  if (delFuelBtn) {
+    const id = delFuelBtn.dataset.id!;
+    if (confirm('Удалить эту заправку?')) {
+      deleteFuelRecord(id);
+    }
+    return;
+  }
+
+  if (target.closest('[data-add-car]')) {
+    ui.carFormOpen = true;
+    render();
+    return;
+  }
+
+  if (target.closest('[data-close-car-form]')) {
+    ui.carFormOpen = false;
+    render();
+    return;
+  }
+
+  const switchCarBtn = target.closest<HTMLElement>('[data-switch-car]');
+  if (switchCarBtn) {
+    switchCar(switchCarBtn.dataset.id!);
+    return;
+  }
+
+  const delCarBtn = target.closest<HTMLElement>('[data-delete-car]');
+  if (delCarBtn) {
+    const id = delCarBtn.dataset.id!;
+    if (confirm('Удалить этот автомобиль вместе со всей его историей обслуживания и заправок? Это необратимо.')) {
+      deleteCar(id);
+    }
+    return;
+  }
+
   if (target.id === 'export-btn') {
     downloadJson();
     return;
@@ -163,6 +316,19 @@ function onClick(e: MouseEvent): void {
 
 function onSubmit(e: SubmitEvent): void {
   const form = e.target as HTMLFormElement;
+  if (form.id === 'fuel-form') {
+    onSubmitFuel(form, e);
+    return;
+  }
+  if (form.id === 'car-form') {
+    e.preventDefault();
+    const fd = new FormData(form);
+    const name = String(fd.get('name') || '').trim();
+    if (name) addCar(name);
+    ui.carFormOpen = false;
+    render();
+    return;
+  }
   if (form.id !== 'record-form') return;
   e.preventDefault();
   const car = getActiveCar();
@@ -200,9 +366,58 @@ function onSubmit(e: SubmitEvent): void {
   render();
 }
 
+function onSubmitFuel(form: HTMLFormElement, e: SubmitEvent): void {
+  e.preventDefault();
+  const car = getActiveCar();
+  const fd = new FormData(form);
+  const recordId = form.dataset.recordId;
+
+  const values = {
+    date: String(fd.get('date')),
+    mileage: parseSpacedNumber(String(fd.get('mileage') || '')),
+    liters: Number(fd.get('liters')),
+    cost: Number(fd.get('cost')),
+  };
+
+  if (recordId) {
+    updateFuelRecord(recordId, values);
+  } else {
+    addFuelRecord({ carId: car.id, ...values });
+  }
+
+  ui.fuelFormOpen = false;
+  ui.editingFuelId = null;
+  render();
+}
+
 function onInput(e: Event): void {
   const target = e.target as HTMLElement;
-  if (!(target instanceof HTMLInputElement) || !target.classList.contains('num-spaced')) return;
+  if (!(target instanceof HTMLInputElement)) return;
+
+  if (target.id === 'trip-distance-input') {
+    const distance = Number(target.value);
+    const avg = Number(target.dataset.avgConsumption);
+    const price = Number(target.dataset.avgPrice);
+    const resultEl = document.getElementById('trip-result');
+    if (!resultEl) return;
+    if (distance > 0 && avg > 0 && price > 0) {
+      const liters = (distance / 100) * avg;
+      const cost = liters * price;
+      resultEl.textContent = `≈ ${liters.toFixed(1)} л · ≈ ${Math.round(cost)} ₽`;
+    } else if (avg > 0 && price > 0) {
+      resultEl.textContent = 'Введите расстояние — посчитаю расход и стоимость';
+    }
+    return;
+  }
+
+  const fuelField = target.dataset.fuelField as FuelField | undefined;
+  if (fuelField) {
+    const form = target.closest<HTMLFormElement>('#fuel-form');
+    if (form) onFuelFieldInput(fuelField, form);
+    return;
+  }
+
+  if (!target.classList.contains('num-spaced')) return;
 
   const caret = target.selectionStart ?? target.value.length;
   const digitsBeforeCaret = target.value.slice(0, caret).replace(/\D/g, '').length;
@@ -263,10 +478,10 @@ function onChange(e: Event): void {
     return;
   }
 
-  if (target.id === 'car-fuel-consumption-input') {
+  if (target.id === 'car-tank-capacity-input') {
     const raw = (target as HTMLInputElement).value;
     const val = raw ? Number(raw) : NaN;
-    updateCar({ fuelConsumption: Number.isFinite(val) ? val : undefined });
+    updateCar({ tankCapacity: Number.isFinite(val) ? val : undefined });
     return;
   }
 
