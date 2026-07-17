@@ -1,4 +1,4 @@
-import { addCar, addFuelRecord, addRecord, deleteCar, deleteFuelRecord, deleteRecord, exportJson, getActiveCar, getAllCars, getFuelRecordById, getFuelRecordsForCar, getRecordById, importJson, resetAll, subscribe, switchCar, updateCar, updateFuelRecord, updateRecord, } from './store.js';
+import { addCar, addFuelRecord, addRecord, deleteCar, deleteFuelRecord, deleteRecord, exportJson, getActiveCar, getAllCars, getFuelRecordById, getFuelRecordsForCar, getRecordById, importJson, resetAll, setCustomInterval, subscribe, switchCar, updateCar, updateFuelRecord, updateRecord, } from './store.js';
 import { bottomNav, renderCarForm, renderFuel, renderFuelForm, renderHome, renderJournal, renderService, renderSettings, renderZonePanel, renderRecordForm, } from './view.js';
 import { formatDigitsWithSpaces, parseSpacedNumber } from './format.js';
 import { getCurrentAccount, logout } from './auth.js';
@@ -54,6 +54,7 @@ const ui = {
     fuelFormOpen: false,
     editingFuelId: null,
     carFormOpen: false,
+    intervalsOpen: false,
 };
 let root;
 export function mountApp(rootEl) {
@@ -70,7 +71,16 @@ export function mountApp(rootEl) {
     root.addEventListener('pointerup', onPointerUp);
     root.addEventListener('pointercancel', onPointerUp);
     root.addEventListener('pointerleave', onPointerUp, true);
+    // 'toggle' не всплывает — слушаем на фазе погружения (capture),
+    // чтобы запомнить, открыт ли <details>, и не сбрасывать это при перерисовке.
+    root.addEventListener('toggle', onToggle, true);
     render();
+}
+function onToggle(e) {
+    const target = e.target;
+    if (target.classList.contains('intervals-toggle')) {
+        ui.intervalsOpen = target.open;
+    }
 }
 // Подсветка нажатия кнопок/карточек своими силами: мы отключили нативный
 // -webkit-tap-highlight-color (убирает уродливую синюю вспышку на тапе),
@@ -146,18 +156,12 @@ function render() {
     else {
         const account = getCurrentAccount();
         if (!account) {
-            // Временная диагностика: показываем, что реально лежит в localStorage
-            // в момент сбоя, вместо того чтобы тихо перезагружать страницу.
-            const rawSession = localStorage.getItem('auto-journal-session-v1');
-            const rawAuth = localStorage.getItem('auto-journal-accounts-v1');
-            alert(`ДИАГНОСТИКА (сфотографируйте это окно):\n\n` +
-                `session key = ${rawSession}\n` +
-                `accounts key существует = ${rawAuth !== null}\n` +
-                `accounts длина = ${rawAuth ? rawAuth.length : 'нет ключа'}\n` +
-                `accounts содержимое = ${rawAuth ? rawAuth.slice(0, 300) : '—'}`);
+            // Сессия испорчена/устарела — вместо падения молча возвращаем на экран входа.
+            logout();
+            location.reload();
             return;
         }
-        page = renderSettings(car, getAllCars(), account);
+        page = renderSettings(car, getAllCars(), account, ui.intervalsOpen);
     }
     let overlay = '';
     if (ui.formCategory) {
@@ -482,6 +486,12 @@ function onChange(e) {
     }
     if (target.id === 'car-drive-type-input') {
         updateCar({ driveType: target.value });
+        return;
+    }
+    if (target.classList.contains('interval-input')) {
+        const category = target.dataset.category;
+        const digits = target.value.replace(/\D/g, '');
+        setCustomInterval(category, digits ? Number(digits) : undefined);
         return;
     }
     if (target.id === 'import-input') {

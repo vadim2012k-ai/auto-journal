@@ -13,6 +13,7 @@ import {
   getRecordById,
   importJson,
   resetAll,
+  setCustomInterval,
   subscribe,
   switchCar,
   updateCar,
@@ -89,6 +90,7 @@ const ui: UiState = {
   fuelFormOpen: false,
   editingFuelId: null,
   carFormOpen: false,
+  intervalsOpen: false,
 };
 
 let root: HTMLElement;
@@ -107,7 +109,17 @@ export function mountApp(rootEl: HTMLElement): void {
   root.addEventListener('pointerup', onPointerUp);
   root.addEventListener('pointercancel', onPointerUp);
   root.addEventListener('pointerleave', onPointerUp, true);
+  // 'toggle' не всплывает — слушаем на фазе погружения (capture),
+  // чтобы запомнить, открыт ли <details>, и не сбрасывать это при перерисовке.
+  root.addEventListener('toggle', onToggle, true);
   render();
+}
+
+function onToggle(e: Event): void {
+  const target = e.target as HTMLElement;
+  if (target.classList.contains('intervals-toggle')) {
+    ui.intervalsOpen = (target as HTMLDetailsElement).open;
+  }
 }
 
 // Подсветка нажатия кнопок/карточек своими силами: мы отключили нативный
@@ -184,20 +196,12 @@ function render(): void {
   else {
     const account = getCurrentAccount();
     if (!account) {
-      // Временная диагностика: показываем, что реально лежит в localStorage
-      // в момент сбоя, вместо того чтобы тихо перезагружать страницу.
-      const rawSession = localStorage.getItem('auto-journal-session-v1');
-      const rawAuth = localStorage.getItem('auto-journal-accounts-v1');
-      alert(
-        `ДИАГНОСТИКА (сфотографируйте это окно):\n\n` +
-          `session key = ${rawSession}\n` +
-          `accounts key существует = ${rawAuth !== null}\n` +
-          `accounts длина = ${rawAuth ? rawAuth.length : 'нет ключа'}\n` +
-          `accounts содержимое = ${rawAuth ? rawAuth.slice(0, 300) : '—'}`,
-      );
+      // Сессия испорчена/устарела — вместо падения молча возвращаем на экран входа.
+      logout();
+      location.reload();
       return;
     }
-    page = renderSettings(car, getAllCars(), account);
+    page = renderSettings(car, getAllCars(), account, ui.intervalsOpen);
   }
 
   let overlay = '';
@@ -553,6 +557,13 @@ function onChange(e: Event): void {
 
   if (target.id === 'car-drive-type-input') {
     updateCar({ driveType: (target as HTMLSelectElement).value as DriveType });
+    return;
+  }
+
+  if (target.classList.contains('interval-input')) {
+    const category = (target as HTMLElement).dataset.category as CategoryId;
+    const digits = (target as HTMLInputElement).value.replace(/\D/g, '');
+    setCustomInterval(category, digits ? Number(digits) : undefined);
     return;
   }
 

@@ -1,4 +1,4 @@
-import type { CategoryId, ZoneId } from './types.js';
+import type { CategoryId, DriveType, ZoneId } from './types.js';
 
 export interface CategoryConfig {
   id: CategoryId;
@@ -212,6 +212,20 @@ export const JOURNAL_GROUPS: JournalGroup[] = [
   },
   { id: 'tires', label: 'Резина', icon: '🛞', categories: ['tires'] },
 ];
+
+/**
+ * Убирает узлы трансмиссии, которых физически нет при данном типе привода
+ * (раздатка — только на полном, редуктор — на полном/заднем).
+ */
+export function categoriesForDriveType(driveType: DriveType, categories: CategoryId[]): CategoryId[] {
+  if (driveType === 'fwd') {
+    return categories.filter((c) => c !== 'diff_oil' && c !== 'transfer_case_oil');
+  }
+  if (driveType === 'rwd') {
+    return categories.filter((c) => c !== 'transfer_case_oil');
+  }
+  return categories;
+}
 
 export const WHEEL_ZONE_POSITION: Partial<Record<ZoneId, 'FL' | 'FR' | 'RL' | 'RR'>> = {
   wheel_fl: 'FL',

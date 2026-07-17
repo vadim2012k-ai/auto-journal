@@ -179,6 +179,19 @@ export const JOURNAL_GROUPS = [
     },
     { id: 'tires', label: 'Резина', icon: '🛞', categories: ['tires'] },
 ];
+/**
+ * Убирает узлы трансмиссии, которых физически нет при данном типе привода
+ * (раздатка — только на полном, редуктор — на полном/заднем).
+ */
+export function categoriesForDriveType(driveType, categories) {
+    if (driveType === 'fwd') {
+        return categories.filter((c) => c !== 'diff_oil' && c !== 'transfer_case_oil');
+    }
+    if (driveType === 'rwd') {
+        return categories.filter((c) => c !== 'transfer_case_oil');
+    }
+    return categories;
+}
 export const WHEEL_ZONE_POSITION = {
     wheel_fl: 'FL',
     wheel_fr: 'FR',

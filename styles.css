@@ -434,6 +434,24 @@ html, body {
 }
 .settings-section h3 { font-size: 13px; color: var(--text-dim); margin: 0 0 14px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; }
 
+.intervals-toggle > summary {
+  font-size: 13px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 700;
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.intervals-toggle > summary::-webkit-details-marker { display: none; }
+.intervals-toggle > summary::after { content: '▾'; font-size: 12px; transition: transform 0.15s ease; }
+.intervals-toggle[open] > summary::after { transform: rotate(180deg); }
+.intervals-toggle[open] > summary { margin-bottom: 14px; }
+.intervals-toggle .settings-field:last-child { margin-bottom: 0; }
+
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slideUp { from { transform: translate(-50%, 100%); } to { transform: translate(-50%, 0); } }
 

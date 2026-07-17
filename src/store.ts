@@ -130,6 +130,18 @@ export function updateCar(
   notify();
 }
 
+/** Задать свой интервал ТО (км) для категории у активной машины; undefined — вернуть по умолчанию */
+export function setCustomInterval(category: CategoryId, km: number | undefined): void {
+  const car = getActiveCar();
+  if (km === undefined) {
+    if (car.customIntervals) delete car.customIntervals[category];
+  } else {
+    if (!car.customIntervals) car.customIntervals = {};
+    car.customIntervals[category] = km;
+  }
+  notify();
+}
+
 export function getRecordsForCategory(
   carId: string,
   category: CategoryId,

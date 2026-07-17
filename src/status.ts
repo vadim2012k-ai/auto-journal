@@ -2,18 +2,23 @@ import { CATEGORIES, ZONES, WHEEL_ZONE_POSITION } from './config.js';
 import { getRecordsForCategory } from './store.js';
 import type { Car, CategoryId, ServiceStatus, WheelPosition, ZoneId } from './types.js';
 
+/** Интервал ТО для этой машины: свой (если задан в настройках) или стандартный по умолчанию */
+export function effectiveIntervalKm(car: Car, category: CategoryId): number | undefined {
+  return car.customIntervals?.[category] ?? CATEGORIES[category].intervalKm;
+}
+
 export function categoryStatus(
   car: Car,
   category: CategoryId,
   position?: WheelPosition,
 ): ServiceStatus {
-  const cfg = CATEGORIES[category];
   const records = getRecordsForCategory(car.id, category, position);
   if (records.length === 0) return 'unknown';
-  if (!cfg.intervalKm) return 'ok'; // например, шины — интервал не считаем, просто есть данные
+  const intervalKm = effectiveIntervalKm(car, category);
+  if (!intervalKm) return 'ok'; // например, шины — интервал не считаем, просто есть данные
   const last = records[0];
   const delta = car.odometer - last.mileage;
-  const ratio = delta / cfg.intervalKm;
+  const ratio = delta / intervalKm;
   if (ratio < 0.8) return 'ok';
   if (ratio < 1) return 'soon';
   return 'overdue';
@@ -38,9 +43,9 @@ export function zoneStatus(car: Car, zoneId: ZoneId): ServiceStatus {
 }
 
 export function kmLeft(car: Car, category: CategoryId, position?: WheelPosition): number | null {
-  const cfg = CATEGORIES[category];
-  if (!cfg.intervalKm) return null;
+  const intervalKm = effectiveIntervalKm(car, category);
+  if (!intervalKm) return null;
   const records = getRecordsForCategory(car.id, category, position);
   if (records.length === 0) return null;
-  return cfg.intervalKm - (car.odometer - records[0].mileage);
+  return intervalKm - (car.odometer - records[0].mileage);
 }

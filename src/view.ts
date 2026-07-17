@@ -1,6 +1,14 @@
-import { CATEGORIES, JOURNAL_GROUPS, SEASON_LABELS, STATUS_COLORS, STATUS_LABELS, ZONES } from './config.js';
+import {
+  CATEGORIES,
+  categoriesForDriveType,
+  JOURNAL_GROUPS,
+  SEASON_LABELS,
+  STATUS_COLORS,
+  STATUS_LABELS,
+  ZONES,
+} from './config.js';
 import { renderCarDiagram } from './diagram.js';
-import { categoryStatus, kmLeft, zoneStatus } from './status.js';
+import { categoryStatus, effectiveIntervalKm, kmLeft, zoneStatus } from './status.js';
 import { formatDate, formatDigitsWithSpaces, formatKm, formatMoney, todayIso } from './format.js';
 import { getAllRecordsForCar, getRecordsForCategory } from './store.js';
 import {
@@ -28,6 +36,7 @@ export interface UiState {
   fuelFormOpen: boolean;
   editingFuelId: string | null;
   carFormOpen: boolean;
+  intervalsOpen: boolean;
 }
 
 function statusChip(statusKey: string): string {
@@ -476,7 +485,30 @@ export function renderCarForm(): string {
   </div>`;
 }
 
-export function renderSettings(car: Car, cars: Car[], account: Account): string {
+function renderIntervalsSection(car: Car, open: boolean): string {
+  const allWithInterval = (Object.keys(CATEGORIES) as CategoryId[]).filter((id) => CATEGORIES[id].intervalKm);
+  const categories = categoriesForDriveType(car.driveType, allWithInterval);
+  const rows = categories
+    .map((id) => {
+      const cfg = CATEGORIES[id];
+      const isCustom = car.customIntervals?.[id] !== undefined;
+      const value = effectiveIntervalKm(car, id);
+      return `<label class="settings-field">${cfg.icon} ${cfg.label}, км${isCustom ? ' · своё значение' : ''}
+        <input type="text" inputmode="numeric" class="num-spaced interval-input" data-category="${id}" value="${formatDigitsWithSpaces(String(value ?? ''))}" placeholder="по умолчанию ${formatDigitsWithSpaces(String(cfg.intervalKm))}" />
+      </label>`;
+    })
+    .join('');
+  return `
+    <div class="settings-section">
+      <details class="intervals-toggle" ${open ? 'open' : ''}>
+        <summary>Периодичность ТО</summary>
+        <p class="hint">По умолчанию используются стандартные интервалы. Если ваша машина (например, турбо) требует более частой замены — задайте свой пробег, он заменит стандартный только для этой машины. Очистите поле, чтобы вернуть значение по умолчанию.</p>
+        ${rows}
+      </details>
+    </div>`;
+}
+
+export function renderSettings(car: Car, cars: Car[], account: Account, intervalsOpen: boolean): string {
   return `
   <header class="topbar"><div class="topbar-title">Настройки</div></header>
   <div class="settings-list">
@@ -520,6 +552,8 @@ export function renderSettings(car: Car, cars: Car[], account: Account): string 
       </label>
       <p class="hint">Тип привода меняет схему на «Гараже»: при полном приводе появляется раздаточная коробка, при переднем — нет отдельного заднего редуктора.</p>
     </div>
+
+    ${renderIntervalsSection(car, intervalsOpen)}
 
     <div class="settings-section">
       <h3>Данные</h3>

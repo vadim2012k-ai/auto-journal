@@ -12,15 +12,21 @@ const TIRE_H = 74;
 const BRAKE_R = 15;
 const BRAKE_GAP = 2;
 
+// Кузов и колёса
+const BODY_X = 40;
+const BODY_W = 240;
+const WHEEL_CX_L = 38;
+const WHEEL_CX_R = 282;
+
 function zoneFill(car: Car, zoneId: ZoneId): string {
   return STATUS_COLORS[zoneStatus(car, zoneId)];
 }
 
 /**
- * Колесо = одна большая кликабельная шина в виде прямоугольника (вид
- * протектора снизу, как у настоящего колеса) + отдельный маленький
- * кружок-бейдж тормозов, касающийся её снаружи — это два явно разных
- * элемента, а не вложенные друг в друга, чтобы было понятно, куда тапаешь.
+ * Колесо = одна большая кликабельная шина-прямоугольник (вид снизу) +
+ * отдельный маленький кружок-бейдж тормозов, касающийся её снаружи — это
+ * два явно разных элемента, а не вложенные друг в друга, чтобы было
+ * понятно, куда тапаешь.
  */
 function wheelGroup(
   wheelZone: ZoneId,
@@ -65,15 +71,15 @@ function cabinBlock(cabinFill: string, y: number, height: number): string {
  */
 function drivetrainLines(car: Car): string {
   const driveType = car.driveType;
-  const rearStubs = `${axleStub(106, 436, 58, 480)}${axleStub(214, 436, 262, 480)}`;
+  const rearStubs = `${axleStub(106, 436, WHEEL_CX_L, 480)}${axleStub(214, 436, WHEEL_CX_R, 480)}`;
 
   if (driveType === 'fwd') {
-    return `${axleStub(112, 210, 58, 150)}${axleStub(208, 210, 262, 150)}`;
+    return `${axleStub(112, 210, WHEEL_CX_L, 150)}${axleStub(208, 210, WHEEL_CX_R, 150)}`;
   }
 
   if (driveType === 'awd') {
     return `
-    ${axleStub(112, 272, 58, 150)}${axleStub(208, 272, 262, 150)}
+    ${axleStub(112, 272, WHEEL_CX_L, 150)}${axleStub(208, 272, WHEEL_CX_R, 150)}
     <line x1="160" y1="302" x2="160" y2="410" stroke="#475569" stroke-width="6" stroke-linecap="round" stroke-dasharray="2 10"/>
     ${rearStubs}`;
   }
@@ -151,7 +157,7 @@ export function renderCarDiagram(car: Car): string {
     </defs>
 
     <!-- Кузов -->
-    <rect x="60" y="16" width="200" height="608" rx="46" fill="url(#bodyGrad)" stroke="#334155" stroke-width="2"/>
+    <rect x="${BODY_X}" y="16" width="${BODY_W}" height="608" rx="48" fill="url(#bodyGrad)" stroke="#334155" stroke-width="2"/>
     <text x="160" y="8" text-anchor="middle" class="diagram-caption">НОС</text>
 
     <!-- Пунктирные валы привода — рисуются первыми, "под" всеми узлами -->
@@ -174,14 +180,14 @@ export function renderCarDiagram(car: Car): string {
     </g>
 
     <!-- Передняя ось: колёса + тормоза -->
-    ${wheelGroup('wheel_fl', 'brakes_front', 58, 150, tireFlFill, brakesFrontFill, 'below')}
-    ${wheelGroup('wheel_fr', 'brakes_front', 262, 150, tireFrFill, brakesFrontFill, 'below')}
+    ${wheelGroup('wheel_fl', 'brakes_front', WHEEL_CX_L, 150, tireFlFill, brakesFrontFill, 'below')}
+    ${wheelGroup('wheel_fr', 'brakes_front', WHEEL_CX_R, 150, tireFrFill, brakesFrontFill, 'below')}
 
     ${drivetrainBoxes(car, gearboxFill)}
 
     <!-- Задняя ось: колёса + тормоза -->
-    ${wheelGroup('wheel_rl', 'brakes_rear', 58, 480, tireRlFill, brakesRearFill, 'above')}
-    ${wheelGroup('wheel_rr', 'brakes_rear', 262, 480, tireRrFill, brakesRearFill, 'above')}
+    ${wheelGroup('wheel_rl', 'brakes_rear', WHEEL_CX_L, 480, tireRlFill, brakesRearFill, 'above')}
+    ${wheelGroup('wheel_rr', 'brakes_rear', WHEEL_CX_R, 480, tireRrFill, brakesRearFill, 'above')}
 
     <!-- Бензобак (декоративно) -->
     <rect x="130" y="530" width="60" height="70" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1.5"/>

@@ -102,6 +102,20 @@ export function updateCar(patch) {
     Object.assign(car, patch);
     notify();
 }
+/** Задать свой интервал ТО (км) для категории у активной машины; undefined — вернуть по умолчанию */
+export function setCustomInterval(category, km) {
+    const car = getActiveCar();
+    if (km === undefined) {
+        if (car.customIntervals)
+            delete car.customIntervals[category];
+    }
+    else {
+        if (!car.customIntervals)
+            car.customIntervals = {};
+        car.customIntervals[category] = km;
+    }
+    notify();
+}
 export function getRecordsForCategory(carId, category, position) {
     return data.records
         .filter((r) => r.carId === carId &&
