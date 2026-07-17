@@ -33,8 +33,9 @@ import {
   type Route,
   type UiState,
 } from './view.js';
-import type { CategoryId, SeasonType, WheelPosition, ZoneId } from './types.js';
+import type { CategoryId, DriveType, SeasonType, WheelPosition, ZoneId } from './types.js';
 import { formatDigitsWithSpaces, parseSpacedNumber } from './format.js';
+import { getCurrentAccount, logout } from './auth.js';
 
 function tireScopePositions(scope: string, base: WheelPosition): WheelPosition[] {
   if (scope === 'front') return ['FL', 'FR'];
@@ -142,7 +143,7 @@ function render(): void {
   else if (ui.route === 'journal') page = renderJournal(car, ui.journalFilter);
   else if (ui.route === 'fuel') page = renderFuel(car, getFuelRecordsForCar(car.id));
   else if (ui.route === 'service') page = renderService();
-  else page = renderSettings(car, getAllCars());
+  else page = renderSettings(car, getAllCars(), getCurrentAccount()!);
 
   let overlay = '';
   if (ui.formCategory) {
@@ -190,8 +191,12 @@ function onClick(e: MouseEvent): void {
 
   const zoneEl = target.closest<HTMLElement>('[data-zone]');
   if (zoneEl && !ui.formCategory) {
-    ui.activeZone = zoneEl.dataset.zone as ZoneId;
-    render();
+    const nextZone = zoneEl.dataset.zone as ZoneId;
+    zoneEl.classList.add('zone-tap-pulse');
+    window.setTimeout(() => {
+      ui.activeZone = nextZone;
+      render();
+    }, 150);
     return;
   }
 
@@ -310,6 +315,12 @@ function onClick(e: MouseEvent): void {
       resetAll();
       ui.route = 'home';
     }
+    return;
+  }
+
+  if (target.id === 'logout-btn') {
+    logout();
+    location.reload();
     return;
   }
 }
@@ -482,6 +493,11 @@ function onChange(e: Event): void {
     const raw = (target as HTMLInputElement).value;
     const val = raw ? Number(raw) : NaN;
     updateCar({ tankCapacity: Number.isFinite(val) ? val : undefined });
+    return;
+  }
+
+  if (target.id === 'car-drive-type-input') {
+    updateCar({ driveType: (target as HTMLSelectElement).value as DriveType });
     return;
   }
 

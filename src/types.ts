@@ -11,6 +11,7 @@ export type CategoryId =
   | 'timing_belt'
   | 'gearbox_oil'
   | 'diff_oil'
+  | 'transfer_case_oil'
   | 'coolant'
   | 'brake_fluid'
   | 'brake_pads_front'
@@ -21,6 +22,7 @@ export type ZoneId =
   | 'engine'
   | 'gearbox'
   | 'diff'
+  | 'transfer_case'
   | 'cooling'
   | 'cabin'
   | 'brakes_front'
@@ -29,6 +31,9 @@ export type ZoneId =
   | 'wheel_fr'
   | 'wheel_rl'
   | 'wheel_rr';
+
+/** Тип привода — определяет структуру трансмиссии на схеме */
+export type DriveType = 'fwd' | 'rwd' | 'awd';
 
 export type WheelPosition = 'FL' | 'FR' | 'RL' | 'RR';
 
@@ -59,7 +64,7 @@ export interface MaintenanceRecord {
 export interface Car {
   id: string;
   name: string;
-  driveType: 'rwd';
+  driveType: DriveType;
   odometer: number;
   createdAt: number;
   /** Характеристики автомобиля — заполняются опционально в настройках */

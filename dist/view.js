@@ -88,8 +88,9 @@ function recordSummary(car, category, position) {
     const status = categoryStatus(car, category, position);
     if (records.length === 0) {
         return `<div class="item-row">
+      <span class="icon-badge">${cfg.icon}</span>
       <div class="item-main">
-        <div class="item-title">${cfg.icon} ${cfg.label}${position ? ` (${position})` : ''}</div>
+        <div class="item-title">${cfg.label}${position ? ` (${position})` : ''}</div>
         <div class="item-sub">Записей ещё нет</div>
       </div>
       ${statusChip(status)}
@@ -100,8 +101,9 @@ function recordSummary(car, category, position) {
     const leftText = left === null ? '' : left >= 0 ? `осталось ~${formatKm(left)}` : `просрочено на ${formatKm(-left)}`;
     const detail = recordDetail(last);
     return `<div class="item-row">
+    <span class="icon-badge">${cfg.icon}</span>
     <div class="item-main">
-      <div class="item-title">${cfg.icon} ${cfg.label}${position ? ` (${position})` : ''}</div>
+      <div class="item-title">${cfg.label}${position ? ` (${position})` : ''}</div>
       <div class="item-sub">${formatDate(last.date)} · ${formatKm(last.mileage)}${detail ? ' · ' + detail : ''} ${leftText ? '· ' + leftText : ''}</div>
     </div>
     ${statusChip(status)}
@@ -236,8 +238,9 @@ export function renderJournal(car, filter) {
         const dateHeader = r.date !== lastDate ? `<div class="journal-date-header">${formatDate(r.date)}</div>` : '';
         lastDate = r.date;
         return `${dateHeader}<div class="journal-row">
+              <span class="icon-badge">${cfg.icon}</span>
               <div class="item-main">
-                <div class="item-title">${cfg.icon} ${cfg.label}${r.position ? ` (${r.position})` : ''}</div>
+                <div class="item-title">${cfg.label}${r.position ? ` (${r.position})` : ''}</div>
                 <div class="item-sub">${formatKm(r.mileage)}${recordDetail(r) ? ' · ' + recordDetail(r) : ''}${r.cost ? ' · ' + r.cost + ' ₽' : ''}</div>
                 ${r.notes ? `<div class="item-notes">${escapeHtml(r.notes)}</div>` : ''}
               </div>
@@ -302,8 +305,9 @@ export function renderFuel(car, fuelRecords) {
             const interval = intervalByRecordId.get(r.id);
             const pricePerLiter = r.liters > 0 ? r.cost / r.liters : 0;
             return `<div class="journal-row">
+              <span class="icon-badge">⛽</span>
               <div class="item-main">
-                <div class="item-title">⛽ Заправка</div>
+                <div class="item-title">Заправка</div>
                 <div class="item-sub">${formatDate(r.date)} · ${formatKm(r.mileage)} · ${r.liters.toFixed(1)} л · ${formatMoney(r.cost)} (${pricePerLiter.toFixed(1)} ₽/л)${interval ? ' · ' + interval.consumption.toFixed(1) + ' л/100км' : ''}</div>
               </div>
               <span>
@@ -401,18 +405,23 @@ export function renderCarForm() {
     </form>
   </div>`;
 }
-export function renderSettings(car, cars) {
+export function renderSettings(car, cars, account) {
     return `
   <header class="topbar"><div class="topbar-title">Настройки</div></header>
   <div class="settings-list">
-    ${renderCarSwitcher(cars, car.id)}
+    <div class="settings-section">
+      <h3>Мой аккаунт</h3>
+      <p class="hint">ID: ${account.id}<br/>Email: ${escapeHtml(account.email)}</p>
+      <button class="btn btn-secondary btn-block" id="logout-btn">Выйти из аккаунта</button>
+    </div>
 
-    <label class="settings-field">Название автомобиля
-      <input type="text" id="car-name-input" value="${escapeHtml(car.name)}" />
-    </label>
+    ${renderCarSwitcher(cars, car.id)}
 
     <div class="settings-section">
       <h3>Характеристики автомобиля</h3>
+      <label class="settings-field">Название автомобиля
+        <input type="text" id="car-name-input" value="${escapeHtml(car.name)}" />
+      </label>
       <label class="settings-field">Марка
         <input type="text" id="car-brand-input" value="${escapeHtml(car.brand ?? '')}" placeholder="напр. Toyota" />
       </label>
@@ -431,7 +440,14 @@ export function renderSettings(car, cars) {
       <label class="settings-field">Объём топливного бака, л
         <input type="number" id="car-tank-capacity-input" step="1" min="0" value="${car.tankCapacity ?? ''}" placeholder="напр. 55" />
       </label>
-      <p class="hint">Привод: задний (RWD)</p>
+      <label class="settings-field">Привод
+        <select id="car-drive-type-input">
+          <option value="fwd" ${car.driveType === 'fwd' ? 'selected' : ''}>Передний (FWD)</option>
+          <option value="rwd" ${car.driveType === 'rwd' ? 'selected' : ''}>Задний (RWD)</option>
+          <option value="awd" ${car.driveType === 'awd' ? 'selected' : ''}>Полный (AWD)</option>
+        </select>
+      </label>
+      <p class="hint">Тип привода меняет схему на «Гараже»: при полном приводе появляется раздаточная коробка, при переднем — нет отдельного заднего редуктора.</p>
     </div>
 
     <div class="settings-section">

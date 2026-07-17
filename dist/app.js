@@ -1,6 +1,7 @@
 import { addCar, addFuelRecord, addRecord, deleteCar, deleteFuelRecord, deleteRecord, exportJson, getActiveCar, getAllCars, getFuelRecordById, getFuelRecordsForCar, getRecordById, importJson, resetAll, subscribe, switchCar, updateCar, updateFuelRecord, updateRecord, } from './store.js';
 import { bottomNav, renderCarForm, renderFuel, renderFuelForm, renderHome, renderJournal, renderService, renderSettings, renderZonePanel, renderRecordForm, } from './view.js';
 import { formatDigitsWithSpaces, parseSpacedNumber } from './format.js';
+import { getCurrentAccount, logout } from './auth.js';
 function tireScopePositions(scope, base) {
     if (scope === 'front')
         return ['FL', 'FR'];
@@ -109,7 +110,7 @@ function render() {
     else if (ui.route === 'service')
         page = renderService();
     else
-        page = renderSettings(car, getAllCars());
+        page = renderSettings(car, getAllCars(), getCurrentAccount());
     let overlay = '';
     if (ui.formCategory) {
         const editingRecord = ui.editingRecordId ? getRecordById(ui.editingRecordId) : undefined;
@@ -154,8 +155,12 @@ function onClick(e) {
     }
     const zoneEl = target.closest('[data-zone]');
     if (zoneEl && !ui.formCategory) {
-        ui.activeZone = zoneEl.dataset.zone;
-        render();
+        const nextZone = zoneEl.dataset.zone;
+        zoneEl.classList.add('zone-tap-pulse');
+        window.setTimeout(() => {
+            ui.activeZone = nextZone;
+            render();
+        }, 150);
         return;
     }
     if (target.closest('[data-close-panel]')) {
@@ -259,6 +264,11 @@ function onClick(e) {
             resetAll();
             ui.route = 'home';
         }
+        return;
+    }
+    if (target.id === 'logout-btn') {
+        logout();
+        location.reload();
         return;
     }
 }
@@ -420,6 +430,10 @@ function onChange(e) {
         const raw = target.value;
         const val = raw ? Number(raw) : NaN;
         updateCar({ tankCapacity: Number.isFinite(val) ? val : undefined });
+        return;
+    }
+    if (target.id === 'car-drive-type-input') {
+        updateCar({ driveType: target.value });
         return;
     }
     if (target.id === 'import-input') {

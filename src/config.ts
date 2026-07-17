@@ -90,6 +90,15 @@ export const CATEGORIES: Record<CategoryId, CategoryConfig> = {
     specLabel: 'Вязкость/спецификация',
     specPlaceholder: 'напр. 75W-90',
   },
+  transfer_case_oil: {
+    id: 'transfer_case_oil',
+    label: 'Масло в раздатке',
+    icon: '🔀',
+    intervalKm: 60000,
+    brandLabel: 'Марка масла',
+    specLabel: 'Вязкость/спецификация',
+    specPlaceholder: 'напр. 75W-90',
+  },
   coolant: {
     id: 'coolant',
     label: 'Охлаждающая жидкость',
@@ -160,6 +169,7 @@ export const ZONES: Record<ZoneId, ZoneConfig> = {
   },
   gearbox: { id: 'gearbox', label: 'Коробка передач', categories: ['gearbox_oil'] },
   diff: { id: 'diff', label: 'Редуктор / задний мост', categories: ['diff_oil'] },
+  transfer_case: { id: 'transfer_case', label: 'Раздаточная коробка', categories: ['transfer_case_oil'] },
   cooling: { id: 'cooling', label: 'Система охлаждения', categories: ['coolant'] },
   cabin: { id: 'cabin', label: 'Салон', categories: ['cabin_filter'] },
   brakes_front: {
@@ -191,6 +201,7 @@ export const JOURNAL_GROUPS: JournalGroup[] = [
   },
   { id: 'gearbox', label: 'КПП', icon: '⚙️', categories: ['gearbox_oil'] },
   { id: 'diff', label: 'Редуктор', icon: '🔩', categories: ['diff_oil'] },
+  { id: 'transfer_case', label: 'Раздатка', icon: '🔀', categories: ['transfer_case_oil'] },
   { id: 'cooling', label: 'Охлаждение', icon: '❄️', categories: ['coolant'] },
   { id: 'cabin', label: 'Салон', icon: '💺', categories: ['cabin_filter'] },
   {

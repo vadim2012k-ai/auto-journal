@@ -1,4 +1,11 @@
-const STORAGE_KEY = 'auto-journal-data-v1';
+// Данные хранятся отдельно на каждый аккаунт (см. auth.ts) — ключ в
+// localStorage включает id аккаунта, чтобы разные пользователи одного
+// браузера не видели данные друг друга.
+const STORAGE_PREFIX = 'auto-journal-data-v1';
+let accountId = null;
+function storageKey() {
+    return accountId != null ? `${STORAGE_PREFIX}-${accountId}` : STORAGE_PREFIX;
+}
 function uid() {
     return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 }
@@ -12,10 +19,10 @@ function defaultData() {
     };
     return { cars: [car], activeCarId: car.id, records: [], fuel: [] };
 }
-let data = load();
+let data = defaultData();
 function load() {
     try {
-        const raw = localStorage.getItem(STORAGE_KEY);
+        const raw = localStorage.getItem(storageKey());
         if (!raw)
             return defaultData();
         const parsed = JSON.parse(raw);
@@ -30,8 +37,13 @@ function load() {
         return defaultData();
     }
 }
+/** Вызывается один раз при входе/восстановлении сессии — до монтирования приложения. */
+export function initForAccount(id) {
+    accountId = id;
+    data = load();
+}
 function persist() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    localStorage.setItem(storageKey(), JSON.stringify(data));
 }
 const listeners = [];
 export function subscribe(fn) {

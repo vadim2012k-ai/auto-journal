@@ -1,6 +1,15 @@
 import type { AppData, Car, FuelRecord, MaintenanceRecord, CategoryId, WheelPosition } from './types.js';
 
-const STORAGE_KEY = 'auto-journal-data-v1';
+// Данные хранятся отдельно на каждый аккаунт (см. auth.ts) — ключ в
+// localStorage включает id аккаунта, чтобы разные пользователи одного
+// браузера не видели данные друг друга.
+const STORAGE_PREFIX = 'auto-journal-data-v1';
+
+let accountId: number | null = null;
+
+function storageKey(): string {
+  return accountId != null ? `${STORAGE_PREFIX}-${accountId}` : STORAGE_PREFIX;
+}
 
 function uid(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
@@ -17,11 +26,11 @@ function defaultData(): AppData {
   return { cars: [car], activeCarId: car.id, records: [], fuel: [] };
 }
 
-let data: AppData = load();
+let data: AppData = defaultData();
 
 function load(): AppData {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey());
     if (!raw) return defaultData();
     const parsed = JSON.parse(raw) as AppData;
     if (!parsed.cars || parsed.cars.length === 0) return defaultData();
@@ -33,8 +42,14 @@ function load(): AppData {
   }
 }
 
+/** Вызывается один раз при входе/восстановлении сессии — до монтирования приложения. */
+export function initForAccount(id: number): void {
+  accountId = id;
+  data = load();
+}
+
 function persist(): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  localStorage.setItem(storageKey(), JSON.stringify(data));
 }
 
 type Listener = () => void;
@@ -106,6 +121,7 @@ export function updateCar(
       | 'engineVolume'
       | 'enginePower'
       | 'tankCapacity'
+      | 'driveType'
     >
   >,
 ): void {
