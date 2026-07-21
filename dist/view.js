@@ -203,8 +203,9 @@ export function renderRecordForm(car, category, position, record) {
         <input type="date" name="date" value="${isEdit ? record.date : todayIso()}" required />
       </label>
       <label>Пробег, км
-        <input type="text" name="mileage" class="num-spaced" inputmode="numeric" value="${formatDigitsWithSpaces(String(isEdit ? record.mileage : car.odometer))}" required />
+        <input type="text" name="mileage" class="num-spaced mileage-hint-input" inputmode="numeric" value="${formatDigitsWithSpaces(String(isEdit ? record.mileage : car.odometer))}" required />
       </label>
+      <p class="hint" data-mileage-hint></p>
       <label>${cfg.brandLabel}
         <input type="text" name="brand" placeholder="необязательно" value="${isEdit ? escapeHtml(record.brand ?? '') : ''}" />
       </label>
@@ -343,8 +344,9 @@ export function renderFuelForm(car, record) {
         <input type="date" name="date" value="${isEdit ? record.date : todayIso()}" required />
       </label>
       <label>Пробег на одометре, км
-        <input type="text" name="mileage" class="num-spaced" inputmode="numeric" value="${formatDigitsWithSpaces(String(isEdit ? record.mileage : car.odometer))}" required />
+        <input type="text" name="mileage" class="num-spaced mileage-hint-input" inputmode="numeric" value="${formatDigitsWithSpaces(String(isEdit ? record.mileage : car.odometer))}" required />
       </label>
+      <p class="hint" data-mileage-hint></p>
       <label>Залито литров
         <input type="number" name="liters" class="fuel-calc-field" data-fuel-field="liters" step="0.01" min="0" inputmode="decimal" value="${isEdit ? record.liters : ''}" placeholder="напр. 38.5" required />
       </label>

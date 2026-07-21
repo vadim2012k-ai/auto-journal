@@ -36,7 +36,7 @@ import {
   type UiState,
 } from './view.js';
 import type { CategoryId, DriveType, SeasonType, WheelPosition, ZoneId } from './types.js';
-import { formatDigitsWithSpaces, parseSpacedNumber } from './format.js';
+import { formatDigitsWithSpaces, formatKm, parseSpacedNumber } from './format.js';
 import { logout } from './auth.js';
 
 function tireScopePositions(scope: string, base: WheelPosition): WheelPosition[] {
@@ -486,6 +486,23 @@ function onInput(e: Event): void {
     const form = target.closest<HTMLFormElement>('#fuel-form');
     if (form) onFuelFieldInput(fuelField, form);
     return;
+  }
+
+  if (target.classList.contains('mileage-hint-input')) {
+    const hintEl = target.closest('form')?.querySelector<HTMLElement>('[data-mileage-hint]');
+    if (hintEl) {
+      const mileage = parseSpacedNumber(target.value);
+      const current = getActiveCar().odometer;
+      if (!mileage) {
+        hintEl.textContent = '';
+      } else if (mileage > current) {
+        hintEl.textContent = `↑ Текущий пробег обновится до ${formatKm(mileage)}`;
+      } else if (mileage < current) {
+        hintEl.textContent = `Запись из прошлого — текущий пробег (${formatKm(current)}) не изменится`;
+      } else {
+        hintEl.textContent = '';
+      }
+    }
   }
 
   if (!target.classList.contains('num-spaced')) return;

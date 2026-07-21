@@ -1,13 +1,41 @@
 import { mountApp } from './app.js';
 import { initForAccount } from './store.js';
 import { hasSession, login, register } from './auth.js';
-import { renderAuthScreen, type AuthMode } from './authView.js';
+import { renderAuthScreen, renderCheckEmailScreen, type AuthMode } from './authView.js';
 
 const root = document.getElementById('app');
+
+type PasswordStrength = 'weak' | 'medium' | 'strong';
+
+function passwordStrength(pw: string): PasswordStrength {
+  let score = 0;
+  if (pw.length >= 8) score++;
+  if (pw.length >= 12) score++;
+  if (/[a-zа-я]/i.test(pw) && /[A-ZА-Я]/.test(pw)) score++;
+  if (/\d/.test(pw)) score++;
+  if (/[^a-zA-Zа-яА-Я0-9]/.test(pw)) score++;
+  if (score <= 1) return 'weak';
+  if (score <= 3) return 'medium';
+  return 'strong';
+}
+
+const STRENGTH_LABEL: Record<PasswordStrength, string> = {
+  weak: 'слабый',
+  medium: 'средний',
+  strong: 'надёжный',
+};
 
 function renderLoading(): void {
   if (!root) return;
   root.innerHTML = `<div class="auth-screen"><p class="hint">Загрузка…</p></div>`;
+}
+
+function renderCheckEmail(email: string): void {
+  if (!root) return;
+  root.innerHTML = renderCheckEmailScreen(email);
+  root.querySelector<HTMLButtonElement>('[data-auth-tab="login"]')?.addEventListener('click', () => {
+    renderAuth('login', null);
+  });
 }
 
 async function startApp(): Promise<void> {
@@ -20,9 +48,9 @@ async function startApp(): Promise<void> {
   if (root) mountApp(root);
 }
 
-function renderAuth(mode: AuthMode, error: string | null, info?: string | null): void {
+function renderAuth(mode: AuthMode, error: string | null): void {
   if (!root) return;
-  root.innerHTML = renderAuthScreen(mode, error ?? null, info ?? null);
+  root.innerHTML = renderAuthScreen(mode, error);
   wireAuthEvents(mode);
 }
 
@@ -35,6 +63,33 @@ function wireAuthEvents(mode: AuthMode): void {
       if (nextMode !== mode) renderAuth(nextMode, null);
     });
   });
+
+  root.querySelectorAll<HTMLButtonElement>('[data-toggle-password]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const input = btn.previousElementSibling as HTMLInputElement | null;
+      if (!input) return;
+      const showing = input.type === 'text';
+      input.type = showing ? 'password' : 'text';
+      btn.textContent = showing ? '👁️' : '🙈';
+      btn.setAttribute('aria-label', showing ? 'Показать пароль' : 'Скрыть пароль');
+    });
+  });
+
+  const strengthText = root.querySelector<HTMLElement>('[data-strength-text]');
+  const passwordInput = root.querySelector<HTMLInputElement>('.password-input');
+  if (mode === 'register' && strengthText && passwordInput) {
+    passwordInput.addEventListener('input', () => {
+      const value = passwordInput.value;
+      if (!value) {
+        strengthText.textContent = 'Надёжность пароля: —';
+        strengthText.removeAttribute('data-level');
+        return;
+      }
+      const level = passwordStrength(value);
+      strengthText.textContent = `Надёжность пароля: ${STRENGTH_LABEL[level]}`;
+      strengthText.setAttribute('data-level', level);
+    });
+  }
 
   const form = root.querySelector<HTMLFormElement>('#auth-form');
   form?.addEventListener('submit', (e) => {
@@ -56,6 +111,10 @@ function wireAuthEvents(mode: AuthMode): void {
         renderAuth(mode, 'Пароли не совпадают');
         return;
       }
+      if (passwordStrength(password) === 'weak') {
+        renderAuth(mode, 'Пароль слишком простой. Используйте минимум 8 символов и сочетайте буквы разного регистра, цифры или символы.');
+        return;
+      }
       register(email, password).then((result) => {
         if (!result.ok) {
           reEnable();
@@ -63,11 +122,7 @@ function wireAuthEvents(mode: AuthMode): void {
           return;
         }
         if ('needsEmailConfirmation' in result) {
-          renderAuth(
-            'login',
-            null,
-            'Аккаунт создан. Проверьте почту и перейдите по ссылке для подтверждения, затем войдите.',
-          );
+          renderCheckEmail(email);
           return;
         }
         startApp();

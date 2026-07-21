@@ -1,6 +1,6 @@
 import { addCar, addFuelRecord, addRecord, deleteCar, deleteFuelRecord, deleteRecord, exportJson, getActiveCar, getAccountInfo, getAllCars, getFuelRecordById, getFuelRecordsForCar, getRecordById, importJson, resetAll, setCustomInterval, subscribe, switchCar, updateCar, updateFuelRecord, updateRecord, } from './store.js';
 import { bottomNav, renderCarForm, renderFuel, renderFuelForm, renderHome, renderJournal, renderService, renderSettings, renderZonePanel, renderRecordForm, } from './view.js';
-import { formatDigitsWithSpaces, parseSpacedNumber } from './format.js';
+import { formatDigitsWithSpaces, formatKm, parseSpacedNumber } from './format.js';
 import { logout } from './auth.js';
 function tireScopePositions(scope, base) {
     if (scope === 'front')
@@ -424,6 +424,25 @@ function onInput(e) {
         if (form)
             onFuelFieldInput(fuelField, form);
         return;
+    }
+    if (target.classList.contains('mileage-hint-input')) {
+        const hintEl = target.closest('form')?.querySelector('[data-mileage-hint]');
+        if (hintEl) {
+            const mileage = parseSpacedNumber(target.value);
+            const current = getActiveCar().odometer;
+            if (!mileage) {
+                hintEl.textContent = '';
+            }
+            else if (mileage > current) {
+                hintEl.textContent = `↑ Текущий пробег обновится до ${formatKm(mileage)}`;
+            }
+            else if (mileage < current) {
+                hintEl.textContent = `Запись из прошлого — текущий пробег (${formatKm(current)}) не изменится`;
+            }
+            else {
+                hintEl.textContent = '';
+            }
+        }
     }
     if (!target.classList.contains('num-spaced'))
         return;

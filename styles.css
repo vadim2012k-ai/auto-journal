@@ -493,3 +493,22 @@ html, body {
 }
 .auth-tab-active { background: var(--surface); color: var(--text); box-shadow: var(--shadow-card); }
 .auth-error { color: var(--danger); font-size: 13px; font-weight: 600; margin: -6px 0 4px; }
+
+.password-field { position: relative; }
+.password-field input { width: 100%; padding-right: 42px; }
+.password-toggle {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 8px;
+}
+.password-strength-hint { font-size: 12px; font-weight: 700; margin: -8px 0 12px; color: var(--text-dim); }
+.password-strength-hint[data-level="weak"] { color: var(--danger); }
+.password-strength-hint[data-level="medium"] { color: #f59e0b; }
+.password-strength-hint[data-level="strong"] { color: #22c55e; }
