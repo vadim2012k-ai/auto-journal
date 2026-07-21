@@ -1,17 +1,27 @@
 import { mountApp } from './app.js';
 import { initForAccount } from './store.js';
-import { getAccountById, getSessionAccountId, isStorageAvailable, login, register } from './auth.js';
-import { renderAuthScreen, renderStorageBlocked } from './authView.js';
+import { hasSession, login, register } from './auth.js';
+import { renderAuthScreen } from './authView.js';
 const root = document.getElementById('app');
-function startApp(accountId) {
-    initForAccount(accountId);
+function renderLoading() {
+    if (!root)
+        return;
+    root.innerHTML = `<div class="auth-screen"><p class="hint">Загрузка…</p></div>`;
+}
+async function startApp() {
+    renderLoading();
+    const ok = await initForAccount();
+    if (!ok) {
+        renderAuth('login', 'Сессия истекла — войдите ещё раз');
+        return;
+    }
     if (root)
         mountApp(root);
 }
-function renderAuth(mode, error) {
+function renderAuth(mode, error, info) {
     if (!root)
         return;
-    root.innerHTML = renderAuthScreen(mode, error);
+    root.innerHTML = renderAuthScreen(mode, error ?? null, info ?? null);
     wireAuthEvents(mode);
 }
 function wireAuthEvents(mode) {
@@ -27,9 +37,16 @@ function wireAuthEvents(mode) {
     const form = root.querySelector('#auth-form');
     form?.addEventListener('submit', (e) => {
         e.preventDefault();
+        const submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn)
+            submitBtn.disabled = true;
         const fd = new FormData(form);
         const email = String(fd.get('email') || '');
         const password = String(fd.get('password') || '');
+        const reEnable = () => {
+            if (submitBtn)
+                submitBtn.disabled = false;
+        };
         if (mode === 'register') {
             const password2 = String(fd.get('password2') || '');
             if (password !== password2) {
@@ -38,36 +55,31 @@ function wireAuthEvents(mode) {
             }
             register(email, password).then((result) => {
                 if (!result.ok) {
+                    reEnable();
                     renderAuth(mode, result.error);
                     return;
                 }
-                startApp(result.account.id);
+                if ('needsEmailConfirmation' in result) {
+                    renderAuth('login', null, 'Аккаунт создан. Проверьте почту и перейдите по ссылке для подтверждения, затем войдите.');
+                    return;
+                }
+                startApp();
             });
             return;
         }
         login(email, password).then((result) => {
             if (!result.ok) {
+                reEnable();
                 renderAuth(mode, result.error);
                 return;
             }
-            startApp(result.account.id);
+            startApp();
         });
     });
 }
-function renderStorageBlockedScreen() {
-    if (!root)
-        return;
-    root.innerHTML = renderStorageBlocked();
-    root.querySelector('[data-storage-retry]')?.addEventListener('click', () => location.reload());
-}
 function boot() {
-    if (!isStorageAvailable()) {
-        renderStorageBlockedScreen();
-        return;
-    }
-    const sessionId = getSessionAccountId();
-    if (sessionId != null && getAccountById(sessionId)) {
-        startApp(sessionId);
+    if (hasSession()) {
+        startApp();
     }
     else {
         renderAuth('login', null);

@@ -1,7 +1,7 @@
-import { addCar, addFuelRecord, addRecord, deleteCar, deleteFuelRecord, deleteRecord, exportJson, getActiveCar, getAllCars, getFuelRecordById, getFuelRecordsForCar, getRecordById, importJson, resetAll, setCustomInterval, subscribe, switchCar, updateCar, updateFuelRecord, updateRecord, } from './store.js';
+import { addCar, addFuelRecord, addRecord, deleteCar, deleteFuelRecord, deleteRecord, exportJson, getActiveCar, getAccountInfo, getAllCars, getFuelRecordById, getFuelRecordsForCar, getRecordById, importJson, resetAll, setCustomInterval, subscribe, switchCar, updateCar, updateFuelRecord, updateRecord, } from './store.js';
 import { bottomNav, renderCarForm, renderFuel, renderFuelForm, renderHome, renderJournal, renderService, renderSettings, renderZonePanel, renderRecordForm, } from './view.js';
 import { formatDigitsWithSpaces, parseSpacedNumber } from './format.js';
-import { getCurrentAccount, logout } from './auth.js';
+import { logout } from './auth.js';
 function tireScopePositions(scope, base) {
     if (scope === 'front')
         return ['FL', 'FR'];
@@ -154,7 +154,7 @@ function render() {
     else if (ui.route === 'service')
         page = renderService();
     else {
-        const account = getCurrentAccount();
+        const account = getAccountInfo();
         if (!account) {
             // Сессия испорчена/устарела — вместо падения молча возвращаем на экран входа.
             logout();

@@ -7,6 +7,7 @@ import {
   deleteRecord,
   exportJson,
   getActiveCar,
+  getAccountInfo,
   getAllCars,
   getFuelRecordById,
   getFuelRecordsForCar,
@@ -36,7 +37,7 @@ import {
 } from './view.js';
 import type { CategoryId, DriveType, SeasonType, WheelPosition, ZoneId } from './types.js';
 import { formatDigitsWithSpaces, parseSpacedNumber } from './format.js';
-import { getCurrentAccount, logout } from './auth.js';
+import { logout } from './auth.js';
 
 function tireScopePositions(scope: string, base: WheelPosition): WheelPosition[] {
   if (scope === 'front') return ['FL', 'FR'];
@@ -194,7 +195,7 @@ function render(): void {
   else if (ui.route === 'fuel') page = renderFuel(car, getFuelRecordsForCar(car.id));
   else if (ui.route === 'service') page = renderService();
   else {
-    const account = getCurrentAccount();
+    const account = getAccountInfo();
     if (!account) {
       // Сессия испорчена/устарела — вместо падения молча возвращаем на экран входа.
       logout();

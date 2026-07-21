@@ -1,14 +1,23 @@
+import { ensureFreshSession, fetchAppData, saveAppData } from './supabase.js';
 import type { AppData, Car, FuelRecord, MaintenanceRecord, CategoryId, WheelPosition } from './types.js';
 
-// Данные хранятся отдельно на каждый аккаунт (см. auth.ts) — ключ в
-// localStorage включает id аккаунта, чтобы разные пользователи одного
-// браузера не видели данные друг друга.
-const STORAGE_PREFIX = 'auto-journal-data-v1';
+export interface Account {
+  id: number;
+  email: string;
+}
 
-let accountId: number | null = null;
+// Локальный кэш — только для мгновенной отрисовки при следующем открытии
+// и как подстраховка на случай временной потери сети. Источник истины —
+// сервер (Supabase), ключ кэша привязан к реальному id пользователя,
+// чтобы разные аккаунты на одном устройстве не путали данные друг друга.
+const CACHE_PREFIX = 'auto-journal-cache-v1';
 
-function storageKey(): string {
-  return accountId != null ? `${STORAGE_PREFIX}-${accountId}` : STORAGE_PREFIX;
+let userId: string | null = null;
+let displayId: number | null = null;
+let userEmail: string | null = null;
+
+function cacheKey(): string {
+  return `${CACHE_PREFIX}-${userId}`;
 }
 
 function uid(): string {
@@ -28,28 +37,97 @@ function defaultData(): AppData {
 
 let data: AppData = defaultData();
 
-function load(): AppData {
+function normalizeLoaded(parsed: AppData): AppData {
+  if (!parsed.cars || parsed.cars.length === 0) return defaultData();
+  if (!Array.isArray(parsed.fuel)) parsed.fuel = [];
+  return parsed;
+}
+
+function loadCache(): AppData | null {
   try {
-    const raw = localStorage.getItem(storageKey());
-    if (!raw) return defaultData();
-    const parsed = JSON.parse(raw) as AppData;
-    if (!parsed.cars || parsed.cars.length === 0) return defaultData();
-    // Миграция старых сохранений — раздел "Топливо" появился позже.
-    if (!Array.isArray(parsed.fuel)) parsed.fuel = [];
-    return parsed;
+    const raw = localStorage.getItem(cacheKey());
+    return raw ? normalizeLoaded(JSON.parse(raw) as AppData) : null;
   } catch {
-    return defaultData();
+    return null;
   }
 }
 
-/** Вызывается один раз при входе/восстановлении сессии — до монтирования приложения. */
-export function initForAccount(id: number): void {
-  accountId = id;
-  data = load();
+function saveCache(): void {
+  try {
+    localStorage.setItem(cacheKey(), JSON.stringify(data));
+  } catch {
+    // офлайн-кэш недоступен — не критично, сервер всё равно источник истины
+  }
+}
+
+/**
+ * До появления настоящих аккаунтов данные хранились чисто локально
+ * (ключи "auto-journal-data-v1" и "auto-journal-data-v1-<старый id>").
+ * При первой регистрации нового аккаунта на этом устройстве подхватываем
+ * такие данные, чтобы уже накопленная история не потерялась.
+ */
+function findLegacyLocalData(): AppData | null {
+  try {
+    const plain = localStorage.getItem('auto-journal-data-v1');
+    if (plain) return JSON.parse(plain) as AppData;
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('auto-journal-data-v1-')) {
+        const raw = localStorage.getItem(key);
+        if (raw) return JSON.parse(raw) as AppData;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+/**
+ * Вызывается один раз при входе/восстановлении сессии — до монтирования
+ * приложения. Тянет данные с сервера; если это первый вход — создаёт
+ * запись на сервере (заодно выдаётся числовой id аккаунта).
+ * Возвращает false, если сессия недействительна (нужно перелогиниться).
+ */
+export async function initForAccount(): Promise<boolean> {
+  const session = await ensureFreshSession();
+  if (!session) return false;
+  userId = session.userId;
+  userEmail = session.email;
+
+  // Пока грузим с сервера — показываем локальный кэш (если есть), чтобы не мигать пустым экраном.
+  const cached = loadCache();
+  if (cached) data = cached;
+
+  const remote = await fetchAppData();
+  if (remote) {
+    data = normalizeLoaded(remote.data as AppData);
+    displayId = remote.displayId;
+    saveCache();
+  } else {
+    // Первый вход этого пользователя — создаём запись на сервере.
+    // Если на устройстве остались старые локальные данные (до аккаунтов) — переносим их.
+    if (!cached) {
+      const legacy = findLegacyLocalData();
+      data = legacy ? normalizeLoaded(legacy) : defaultData();
+    }
+    const saved = await saveAppData(data);
+    displayId = saved.ok ? saved.displayId : null;
+    saveCache();
+  }
+  return true;
+}
+
+export function getAccountInfo(): Account | null {
+  if (displayId == null || userEmail == null) return null;
+  return { id: displayId, email: userEmail };
 }
 
 function persist(): void {
-  localStorage.setItem(storageKey(), JSON.stringify(data));
+  saveCache();
+  void saveAppData(data).then((res) => {
+    if (res.ok && displayId == null) displayId = res.displayId;
+  });
 }
 
 type Listener = () => void;

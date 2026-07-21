@@ -476,7 +476,7 @@ export function renderSettings(car, cars, account, intervalsOpen) {
 
     <div class="settings-section">
       <h3>Данные</h3>
-      <p class="hint">Прототип хранит данные локально в этом браузере (localStorage), без сервера. Сделайте резервную копию перед очисткой кэша браузера.</p>
+      <p class="hint">Данные хранятся на сервере и доступны с любого устройства после входа в этот аккаунт. Экспорт полезен для резервной копии или переноса.</p>
       <button class="btn btn-secondary btn-block" id="export-btn">⬇️ Экспортировать в JSON</button>
       <label class="btn btn-secondary btn-block" for="import-input" style="text-align:center;cursor:pointer;">⬆️ Импортировать из JSON</label>
       <input type="file" id="import-input" accept="application/json" style="display:none" />
