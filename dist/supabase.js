@@ -143,7 +143,7 @@ export async function fetchAppData() {
     const session = await ensureFreshSession();
     if (!session)
         return null;
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/app_data?select=data,display_id&user_id=eq.${session.userId}`, { headers: authHeaders(session.accessToken) });
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/app_data?select=data,display_id&user_id=eq.${session.userId}`, { headers: authHeaders(session.accessToken), cache: 'no-store' });
     if (!res.ok)
         return null;
     const rows = (await res.json());
@@ -154,17 +154,24 @@ export async function fetchAppData() {
 export async function saveAppData(data) {
     const session = await ensureFreshSession();
     if (!session)
-        return { ok: false };
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/app_data`, {
-        method: 'POST',
-        headers: {
-            ...authHeaders(session.accessToken),
-            Prefer: 'resolution=merge-duplicates,return=representation',
-        },
-        body: JSON.stringify({ user_id: session.userId, data, updated_at: new Date().toISOString() }),
-    });
-    if (!res.ok)
-        return { ok: false };
-    const rows = (await res.json().catch(() => []));
-    return { ok: true, displayId: rows[0]?.display_id ?? 0 };
+        return { ok: false, status: 0, message: 'Нет действительной сессии (не удалось обновить токен)' };
+    try {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/app_data`, {
+            method: 'POST',
+            headers: {
+                ...authHeaders(session.accessToken),
+                Prefer: 'resolution=merge-duplicates,return=representation',
+            },
+            body: JSON.stringify({ user_id: session.userId, data, updated_at: new Date().toISOString() }),
+        });
+        if (!res.ok) {
+            const bodyText = await res.text().catch(() => '');
+            return { ok: false, status: res.status, message: bodyText.slice(0, 300) || res.statusText };
+        }
+        const rows = (await res.json().catch(() => []));
+        return { ok: true, displayId: rows[0]?.display_id ?? 0 };
+    }
+    catch (err) {
+        return { ok: false, status: 0, message: err instanceof Error ? err.message : 'Сеть недоступна' };
+    }
 }

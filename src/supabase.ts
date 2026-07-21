@@ -168,7 +168,7 @@ export async function fetchAppData(): Promise<RemoteAppData | null> {
   if (!session) return null;
   const res = await fetch(
     `${SUPABASE_URL}/rest/v1/app_data?select=data,display_id&user_id=eq.${session.userId}`,
-    { headers: authHeaders(session.accessToken) },
+    { headers: authHeaders(session.accessToken), cache: 'no-store' },
   );
   if (!res.ok) return null;
   const rows = (await res.json()) as { data: unknown; display_id: number }[];
@@ -176,18 +176,29 @@ export async function fetchAppData(): Promise<RemoteAppData | null> {
   return { data: rows[0].data, displayId: rows[0].display_id };
 }
 
-export async function saveAppData(data: unknown): Promise<{ ok: true; displayId: number } | { ok: false }> {
+export type SaveAppDataResult =
+  | { ok: true; displayId: number }
+  | { ok: false; status: number; message: string };
+
+export async function saveAppData(data: unknown): Promise<SaveAppDataResult> {
   const session = await ensureFreshSession();
-  if (!session) return { ok: false };
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/app_data`, {
-    method: 'POST',
-    headers: {
-      ...authHeaders(session.accessToken),
-      Prefer: 'resolution=merge-duplicates,return=representation',
-    },
-    body: JSON.stringify({ user_id: session.userId, data, updated_at: new Date().toISOString() }),
-  });
-  if (!res.ok) return { ok: false };
-  const rows = (await res.json().catch(() => [])) as { display_id: number }[];
-  return { ok: true, displayId: rows[0]?.display_id ?? 0 };
+  if (!session) return { ok: false, status: 0, message: 'Нет действительной сессии (не удалось обновить токен)' };
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/app_data`, {
+      method: 'POST',
+      headers: {
+        ...authHeaders(session.accessToken),
+        Prefer: 'resolution=merge-duplicates,return=representation',
+      },
+      body: JSON.stringify({ user_id: session.userId, data, updated_at: new Date().toISOString() }),
+    });
+    if (!res.ok) {
+      const bodyText = await res.text().catch(() => '');
+      return { ok: false, status: res.status, message: bodyText.slice(0, 300) || res.statusText };
+    }
+    const rows = (await res.json().catch(() => [])) as { display_id: number }[];
+    return { ok: true, displayId: rows[0]?.display_id ?? 0 };
+  } catch (err) {
+    return { ok: false, status: 0, message: err instanceof Error ? err.message : 'Сеть недоступна' };
+  }
 }

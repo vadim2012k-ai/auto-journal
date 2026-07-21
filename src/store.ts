@@ -129,12 +129,31 @@ export function getAccountInfo(): Account | null {
 // более старое сохранение могло затереть более новое.
 let saveQueue: Promise<void> = Promise.resolve();
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function saveWithRetry(): Promise<void> {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const res = await saveAppData(data);
+    if (res.ok) {
+      if (displayId == null) displayId = res.displayId;
+      return;
+    }
+    console.error(`Сохранение на сервер не удалось (попытка ${attempt}/3): [${res.status}] ${res.message}`);
+    if (attempt < 3) await sleep(attempt * 800);
+  }
+  // Временная диагностика: три попытки не помогли — показываем явно, а не молчим.
+  alert(
+    'Не удалось сохранить изменения на сервере после трёх попыток.\n\n' +
+      'Данные остались только в этом браузере и могут потеряться. Сфотографируйте это окно и пришлите разработчику.\n\n' +
+      'Подробности смотрите в консоли браузера (или пришлите последнюю ошибку из неё).',
+  );
+}
+
 function persist(): void {
   saveCache();
-  saveQueue = saveQueue.then(async () => {
-    const res = await saveAppData(data);
-    if (res.ok && displayId == null) displayId = res.displayId;
-  });
+  saveQueue = saveQueue.then(saveWithRetry);
 }
 
 type Listener = () => void;
