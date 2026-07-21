@@ -115,7 +115,16 @@ let swipeStartX = 0;
 let swipeStartY = 0;
 let swipeActive = false;
 function onTouchStart(e) {
-    const target = e.target.closest('[data-car-swipe]');
+    // Та же защита, что и в onClick, но ещё раньше — на самое первое касание,
+    // с максимальным запасом времени до перерисовки от последующего клика.
+    const touchTarget = e.target;
+    const active = document.activeElement;
+    if ((active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) &&
+        active !== touchTarget &&
+        !touchTarget.contains(active)) {
+        active.blur();
+    }
+    const target = touchTarget.closest('[data-car-swipe]');
     if (!target || e.touches.length !== 1) {
         swipeActive = false;
         return;
@@ -186,6 +195,16 @@ function render() {
 }
 function onClick(e) {
     const target = e.target;
+    // Если сейчас в фокусе поле ввода (например, только что печатали пробег) и
+    // клик пришёлся мимо него — принудительно "отпускаем" поле ПЕРЕД обработкой
+    // клика. Иначе клик (навигация и т.п.) может перерисовать страницу раньше,
+    // чем сработает 'change' у поля, и несохранённый ввод просто пропадёт.
+    const active = document.activeElement;
+    if ((active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) &&
+        active !== target &&
+        !target.contains(active)) {
+        active.blur();
+    }
     const filterBtn = target.closest('[data-journal-filter]');
     if (filterBtn) {
         const val = filterBtn.dataset.journalFilter;
