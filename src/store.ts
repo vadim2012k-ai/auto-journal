@@ -123,9 +123,16 @@ export function getAccountInfo(): Account | null {
   return { id: displayId, email: userEmail };
 }
 
+// Сохранения на сервер идут строго по очереди, одно за другим. Без этого
+// два быстрых подряд изменения (например, пробег вручную + сразу запись ТО)
+// уходили бы параллельно, и если ответ сети приходил не в том порядке —
+// более старое сохранение могло затереть более новое.
+let saveQueue: Promise<void> = Promise.resolve();
+
 function persist(): void {
   saveCache();
-  void saveAppData(data).then((res) => {
+  saveQueue = saveQueue.then(async () => {
+    const res = await saveAppData(data);
     if (res.ok && displayId == null) displayId = res.displayId;
   });
 }
