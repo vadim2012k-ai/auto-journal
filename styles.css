@@ -192,6 +192,56 @@ html, body {
   margin-bottom: 16px;
 }
 
+.btn-text {
+  background: none;
+  border: none;
+  color: var(--accent-2);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 6px 4px;
+}
+
+.graph-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin: 4px 0 8px;
+}
+.graph-chart-host {
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+.graph-svg {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 340 / 200;
+  display: block;
+  touch-action: none;
+}
+.graph-grid-line, .graph-grid-line-v { stroke: var(--border); stroke-width: 1; }
+.graph-axis-line { stroke: var(--border); stroke-width: 1.5; }
+.graph-axis-label { fill: var(--text-dim); font-size: 8.5px; font-weight: 600; }
+.graph-line { stroke: var(--accent); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.graph-point { fill: var(--surface); stroke: var(--accent); stroke-width: 2.5; cursor: pointer; }
+.graph-point-active { fill: var(--accent); }
+.graph-point-today { stroke: var(--text-dim); stroke-dasharray: 2 1.5; }
+.graph-point-today.graph-point-active { fill: var(--text-dim); }
+
+.graph-tooltip {
+  margin-top: 10px;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  text-align: center;
+}
+.graph-tooltip-date { font-size: 12px; color: var(--text-dim); font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; }
+.graph-tooltip-mileage { font-size: 22px; font-weight: 800; letter-spacing: -0.2px; margin-top: 2px; }
+.graph-tooltip-cats { font-size: 12.5px; color: var(--text-dim); margin-top: 4px; }
+.graph-tooltip-hint { text-align: center; margin-top: 8px; }
+
 .chip {
   display: inline-flex;
   align-items: center;

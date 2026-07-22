@@ -385,8 +385,3 @@ export function importJson(json: string): void {
   data = parsed;
   notify();
 }
-
-export function resetAll(): void {
-  data = defaultData();
-  notify();
-}

@@ -62,7 +62,7 @@ function carDots(cars, activeCarId) {
     ${cars.map((c) => `<span class="car-dot ${c.id === activeCarId ? 'car-dot-active' : ''}"></span>`).join('')}
   </div>`;
 }
-export function renderHome(car, cars) {
+export function renderHome(car, cars, ui) {
     return `
   <header class="topbar" data-car-swipe>
     <div class="topbar-title-row">
@@ -89,9 +89,13 @@ export function renderHome(car, cars) {
   <div class="diagram-wrap">${renderCarDiagram(car)}</div>
   ${legend()}
 
-  <div class="settings-section">
-    <button type="button" class="btn btn-secondary btn-block" data-add-repair>🔧 Записать ремонт</button>
-    <p class="hint">Для работ, которых нет на схеме — например, ремонт подвески или другая поломка.</p>
+  <div class="settings-list">
+    <div class="settings-section">
+      <button type="button" class="btn btn-secondary btn-block" data-add-repair>🔧 Записать ремонт</button>
+      <p class="hint">Для работ, которых нет на схеме — например, ремонт подвески или другая поломка.</p>
+    </div>
+
+    ${renderGraphCard(car, ui)}
   </div>
   `;
 }
@@ -313,6 +317,230 @@ export function renderJournal(car, filter) {
         : entries.length === 0
             ? `<p class="hint">Нет записей по этому разделу.</p>`
             : rowsHtml}
+  </div>`;
+}
+export const GRAPH_VB_W = 340;
+export const GRAPH_VB_H = 200;
+export const GRAPH_PAD_L = 50;
+export const GRAPH_PAD_R = 12;
+export const GRAPH_PAD_T = 14;
+export const GRAPH_PAD_B = 26;
+export const GRAPH_MIN_SPAN_MS = 30 * 86400000;
+function dateMs(date) {
+    return new Date(date + 'T00:00:00').getTime();
+}
+/** Собирает точки графика (одна на дату записи ТО) и полный диапазон времени: от года выпуска (или первой записи) до сегодня. */
+export function buildGraphDomain(car, records) {
+    const byDate = new Map();
+    for (const r of records) {
+        const existing = byDate.get(r.date);
+        if (existing) {
+            existing.mileage = Math.max(existing.mileage, r.mileage);
+            if (!existing.categories.includes(r.category))
+                existing.categories.push(r.category);
+        }
+        else {
+            byDate.set(r.date, { date: r.date, mileage: r.mileage, categories: [r.category] });
+        }
+    }
+    const points = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+    const now = Date.now();
+    const yearStart = car.year ? new Date(car.year, 0, 1).getTime() : now;
+    const firstPointMs = points.length ? dateMs(points[0].date) : now;
+    const lastPointMs = points.length ? dateMs(points[points.length - 1].date) : 0;
+    const start = Math.min(yearStart, firstPointMs);
+    const end = Math.max(now, lastPointMs);
+    return { points, start: Math.min(start, end - GRAPH_MIN_SPAN_MS), end };
+}
+function niceNumber(x, round) {
+    if (x <= 0)
+        return 1;
+    const exp = Math.floor(Math.log10(x));
+    const f = x / Math.pow(10, exp);
+    let nf;
+    if (round) {
+        if (f < 1.5)
+            nf = 1;
+        else if (f < 3)
+            nf = 2;
+        else if (f < 7)
+            nf = 5;
+        else
+            nf = 10;
+    }
+    else {
+        if (f <= 1)
+            nf = 1;
+        else if (f <= 2)
+            nf = 2;
+        else if (f <= 5)
+            nf = 5;
+        else
+            nf = 10;
+    }
+    return nf * Math.pow(10, exp);
+}
+function niceAxisStep(rawMax, tickCountTarget) {
+    const safeMax = Math.max(rawMax, 1000);
+    const step = niceNumber(safeMax / tickCountTarget, true);
+    const max = Math.ceil(safeMax / step) * step;
+    return { max, step };
+}
+const MONTHS_FULL = [
+    'январь', 'февраль', 'март', 'апрель', 'май', 'июнь',
+    'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь',
+];
+const MONTHS_GENITIVE = [
+    'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+    'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
+];
+function pickStep(candidates, rawStep) {
+    for (const c of candidates)
+        if (c >= rawStep)
+            return c;
+    return candidates[candidates.length - 1];
+}
+function buildXTicks(startMs, endMs) {
+    const spanDays = (endMs - startMs) / 86400000;
+    const ticks = [];
+    if (spanDays > 500) {
+        // Годы читаются коротко ("2019") — можно ставить почаще.
+        const targetCount = 7;
+        const step = pickStep([1, 2, 3, 5, 10, 20, 50], spanDays / 365 / targetCount);
+        const startYear = new Date(startMs).getFullYear();
+        const endYear = new Date(endMs).getFullYear();
+        const firstTickYear = Math.ceil(startYear / step) * step;
+        for (let y = firstTickYear; y <= endYear; y += step) {
+            const ms = new Date(y, 0, 1).getTime();
+            if (ms >= startMs && ms <= endMs)
+                ticks.push({ ms, label: String(y) });
+        }
+    }
+    else if (spanDays > 40) {
+        // Названия месяцев полные ("сентябрь 26") — меток должно быть меньше, иначе налезут друг на друга.
+        const targetCount = 4;
+        const step = pickStep([1, 2, 3, 6], spanDays / 30.4 / targetCount);
+        let monthIndex = new Date(startMs).getFullYear() * 12 + new Date(startMs).getMonth();
+        monthIndex = Math.ceil(monthIndex / step) * step;
+        for (;; monthIndex += step) {
+            const y = Math.floor(monthIndex / 12);
+            const m = ((monthIndex % 12) + 12) % 12;
+            const ms = new Date(y, m, 1).getTime();
+            if (ms > endMs)
+                break;
+            if (ms >= startMs)
+                ticks.push({ ms, label: `${MONTHS_FULL[m]} ${String(y).slice(-2)}` });
+        }
+    }
+    else {
+        const targetCount = 6;
+        const stepDays = pickStep([1, 2, 3, 7, 14], spanDays / targetCount);
+        const stepMs = stepDays * 86400000;
+        let ms = Math.ceil(startMs / stepMs) * stepMs;
+        for (; ms <= endMs; ms += stepMs) {
+            const d = new Date(ms);
+            ticks.push({ ms, label: `${d.getDate()} ${MONTHS_GENITIVE[d.getMonth()]}` });
+        }
+    }
+    return ticks;
+}
+function formatKmAxis(n) {
+    if (n >= 1000)
+        return `${Math.round(n / 1000)} тыс`;
+    return String(Math.round(n));
+}
+/** Рисует саму SVG-схему графика + подсказку с деталями по выбранной точке. Вызывается отдельно от полной перерисовки страницы — при перетаскивании/зуме перерисовывается только этот кусок. */
+export function renderGraphChart(car, domain, view, activeDate) {
+    const plotLeft = GRAPH_PAD_L;
+    const plotRight = GRAPH_VB_W - GRAPH_PAD_R;
+    const plotTop = GRAPH_PAD_T;
+    const plotBottom = GRAPH_VB_H - GRAPH_PAD_B;
+    const rawMax = Math.max(car.odometer, ...domain.points.map((p) => p.mileage), 1000) * 1.08;
+    const { max: yMax, step: yStep } = niceAxisStep(rawMax, 6);
+    const xAt = (ms) => plotLeft + ((ms - view.start) / (view.end - view.start)) * (plotRight - plotLeft);
+    const yAt = (km) => plotBottom - (km / yMax) * (plotBottom - plotTop);
+    const todayMs = Date.now();
+    const lastPoint = domain.points[domain.points.length - 1];
+    const showTodayMarker = !lastPoint || lastPoint.date !== todayIso() || lastPoint.mileage !== car.odometer;
+    const seriesForLine = domain.points.map((p) => ({ ms: dateMs(p.date), km: p.mileage }));
+    if (showTodayMarker)
+        seriesForLine.push({ ms: todayMs, km: car.odometer });
+    const pathD = seriesForLine.map((p, i) => `${i === 0 ? 'M' : 'L'} ${xAt(p.ms).toFixed(1)} ${yAt(p.km).toFixed(1)}`).join(' ');
+    const yTicks = [];
+    for (let v = 0; v <= yMax + 1; v += yStep)
+        yTicks.push(v);
+    const xTicks = buildXTicks(view.start, view.end);
+    const gridHtml = yTicks
+        .map((v) => `<line x1="${plotLeft}" y1="${yAt(v).toFixed(1)}" x2="${plotRight}" y2="${yAt(v).toFixed(1)}" class="graph-grid-line" />`)
+        .join('');
+    const gridVHtml = xTicks
+        .map((t) => `<line x1="${xAt(t.ms).toFixed(1)}" y1="${plotTop}" x2="${xAt(t.ms).toFixed(1)}" y2="${plotBottom}" class="graph-grid-line-v" />`)
+        .join('');
+    const yLabelsHtml = yTicks
+        .map((v) => `<text x="${plotLeft - 8}" y="${(yAt(v) + 3.5).toFixed(1)}" class="graph-axis-label" text-anchor="end">${formatKmAxis(v)}</text>`)
+        .join('');
+    const xLabelsHtml = xTicks
+        .map((t) => `<text x="${xAt(t.ms).toFixed(1)}" y="${GRAPH_VB_H - 8}" class="graph-axis-label" text-anchor="middle">${t.label}</text>`)
+        .join('');
+    const pointsHtml = domain.points
+        .map((p) => {
+        const active = p.date === activeDate;
+        return `<circle cx="${xAt(dateMs(p.date)).toFixed(1)}" cy="${yAt(p.mileage).toFixed(1)}" r="${active ? 6.5 : 4.5}" class="graph-point ${active ? 'graph-point-active' : ''}" data-graph-point data-date="${p.date}" />`;
+    })
+        .join('');
+    const todayPointHtml = showTodayMarker
+        ? `<circle cx="${xAt(todayMs).toFixed(1)}" cy="${yAt(car.odometer).toFixed(1)}" r="${activeDate === 'today' ? 6.5 : 4.5}" class="graph-point graph-point-today ${activeDate === 'today' ? 'graph-point-active' : ''}" data-graph-point data-date="today" />`
+        : '';
+    const active = activeDate === 'today'
+        ? { date: 'today', mileage: car.odometer, categories: [] }
+        : domain.points.find((p) => p.date === activeDate);
+    const tooltipHtml = active
+        ? `<div class="graph-tooltip">
+        <div class="graph-tooltip-date">${active.date === 'today' ? '📍 Сегодня' : formatDate(active.date)}</div>
+        <div class="graph-tooltip-mileage">${formatKm(active.mileage)}</div>
+        ${active.categories.length ? `<div class="graph-tooltip-cats">${active.categories.map((c) => CATEGORIES[c].label).join(', ')}</div>` : active.date === 'today' ? '<div class="graph-tooltip-cats">Текущий пробег</div>' : ''}
+      </div>`
+        : `<p class="hint graph-tooltip-hint">Нажмите на точку графика, чтобы посмотреть пробег и работы</p>`;
+    return `
+  <svg viewBox="0 0 ${GRAPH_VB_W} ${GRAPH_VB_H}" class="graph-svg" data-graph-svg>
+    <defs><clipPath id="graph-clip"><rect x="${plotLeft}" y="${plotTop}" width="${plotRight - plotLeft}" height="${plotBottom - plotTop}" /></clipPath></defs>
+    ${gridHtml}${gridVHtml}
+    <line x1="${plotLeft}" y1="${plotBottom}" x2="${plotRight}" y2="${plotBottom}" class="graph-axis-line" />
+    <line x1="${plotLeft}" y1="${plotTop}" x2="${plotLeft}" y2="${plotBottom}" class="graph-axis-line" />
+    <g clip-path="url(#graph-clip)">
+      <path d="${pathD}" class="graph-line" fill="none" />
+      ${pointsHtml}
+      ${todayPointHtml}
+    </g>
+    ${yLabelsHtml}${xLabelsHtml}
+  </svg>
+  ${tooltipHtml}`;
+}
+/** Сворачиваемая плашка с графиком пробега — встраивается в самый низ страницы «Гараж», закрыта по умолчанию. */
+export function renderGraphCard(car, ui) {
+    const records = getAllRecordsForCar(car.id);
+    const domain = buildGraphDomain(car, records);
+    const view = {
+        start: ui.graphViewStart ?? domain.start,
+        end: ui.graphViewEnd ?? domain.end,
+    };
+    const body = domain.points.length === 0
+        ? `<p class="hint">Пока нет ни одной записи ТО. Точки на графике появятся, когда вы добавите записи через схему выше.</p>`
+        : `
+    <div class="graph-controls">
+      <button type="button" class="icon-btn" data-graph-zoom-out aria-label="Уменьшить">−</button>
+      <button type="button" class="btn-text" data-graph-reset>Сбросить масштаб</button>
+      <button type="button" class="icon-btn" data-graph-zoom-in aria-label="Увеличить">+</button>
+    </div>
+    <div class="graph-chart-host" id="graph-chart-host">
+      ${renderGraphChart(car, domain, view, ui.graphActiveDate)}
+    </div>`;
+    return `
+  <div class="settings-section">
+    <details class="intervals-toggle graph-toggle" ${ui.graphOpen ? 'open' : ''}>
+      <summary>📈 График пробега</summary>
+      ${body}
+    </details>
   </div>`;
 }
 function fuelStat(value, label) {
@@ -617,7 +845,6 @@ export function renderSettings(car, cars, account, intervalsOpen) {
       <button class="btn btn-secondary btn-block" id="export-btn">⬇️ Экспортировать в JSON</button>
       <label class="btn btn-secondary btn-block" for="import-input" style="text-align:center;cursor:pointer;">⬆️ Импортировать из JSON</label>
       <input type="file" id="import-input" accept="application/json" style="display:none" />
-      <button class="btn btn-danger btn-block" id="reset-btn">Очистить все данные</button>
     </div>
   </div>`;
 }

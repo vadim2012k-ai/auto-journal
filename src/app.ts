@@ -11,12 +11,12 @@ import {
   getActiveCar,
   getAccountInfo,
   getAllCars,
+  getAllRecordsForCar,
   getFuelRecordById,
   getFuelRecordsForCar,
   getRecordById,
   getRepairRecordById,
   importJson,
-  resetAll,
   setCustomInterval,
   subscribe,
   switchCar,
@@ -27,9 +27,15 @@ import {
 } from './store.js';
 import {
   bottomNav,
+  buildGraphDomain,
+  GRAPH_MIN_SPAN_MS,
+  GRAPH_PAD_L,
+  GRAPH_PAD_R,
+  GRAPH_VB_W,
   renderCarForm,
   renderFuel,
   renderFuelForm,
+  renderGraphChart,
   renderHome,
   renderJournal,
   renderPhotoCropForm,
@@ -102,7 +108,57 @@ const ui: UiState = {
   carFormOpen: false,
   intervalsOpen: false,
   photoFormOpen: false,
+  graphOpen: false,
+  graphViewStart: null,
+  graphViewEnd: null,
+  graphActiveDate: null,
 };
+
+// Перетаскивание/масштаб графика — своё состояние вне ui/render по той же
+// причине, что и обрезка фото: двигаем впрямую через DOM на каждый пиксель,
+// без полной перерисовки страницы.
+let graphDragging = false;
+let graphDragStartX = 0;
+let graphDragStartViewStart = 0;
+let graphDragStartViewEnd = 0;
+
+function currentGraphDomain() {
+  const car = getActiveCar();
+  return buildGraphDomain(car, getAllRecordsForCar(car.id));
+}
+
+function redrawGraph(): void {
+  const host = document.getElementById('graph-chart-host');
+  if (!host) return;
+  const car = getActiveCar();
+  const domain = currentGraphDomain();
+  const view = { start: ui.graphViewStart ?? domain.start, end: ui.graphViewEnd ?? domain.end };
+  host.innerHTML = renderGraphChart(car, domain, view, ui.graphActiveDate);
+}
+
+function graphZoomBy(factor: number, focalMs?: number): void {
+  const domain = currentGraphDomain();
+  const curStart = ui.graphViewStart ?? domain.start;
+  const curEnd = ui.graphViewEnd ?? domain.end;
+  const curSpan = curEnd - curStart;
+  const focal = focalMs ?? (curStart + curEnd) / 2;
+  const fullSpan = domain.end - domain.start;
+  let newSpan = Math.min(fullSpan, Math.max(GRAPH_MIN_SPAN_MS, curSpan / factor));
+  const ratio = curSpan > 0 ? (focal - curStart) / curSpan : 0.5;
+  let newStart = focal - ratio * newSpan;
+  let newEnd = newStart + newSpan;
+  if (newStart < domain.start) {
+    newEnd += domain.start - newStart;
+    newStart = domain.start;
+  }
+  if (newEnd > domain.end) {
+    newStart -= newEnd - domain.end;
+    newEnd = domain.end;
+  }
+  ui.graphViewStart = Math.max(domain.start, newStart);
+  ui.graphViewEnd = Math.min(domain.end, newEnd);
+  redrawGraph();
+}
 
 // Обрезка фото автомобиля в кружок — своё маленькое состояние вне ui/render,
 // т.к. перетаскивание/зум двигают картинку впрямую через DOM на каждый пиксель,
@@ -169,11 +225,31 @@ export function mountApp(rootEl: HTMLElement): void {
   // 'toggle' не всплывает — слушаем на фазе погружения (capture),
   // чтобы запомнить, открыт ли <details>, и не сбрасывать это при перерисовке.
   root.addEventListener('toggle', onToggle, true);
+  root.addEventListener('wheel', onWheel, { passive: false });
   render();
+}
+
+function onWheel(e: WheelEvent): void {
+  const host = (e.target as HTMLElement).closest<HTMLElement>('#graph-chart-host');
+  if (!host) return;
+  e.preventDefault();
+  const domain = currentGraphDomain();
+  const view = { start: ui.graphViewStart ?? domain.start, end: ui.graphViewEnd ?? domain.end };
+  const rect = host.getBoundingClientRect();
+  const xVb = ((e.clientX - rect.left) / rect.width) * GRAPH_VB_W;
+  const plotLeft = GRAPH_PAD_L;
+  const plotRight = GRAPH_VB_W - GRAPH_PAD_R;
+  const t = (xVb - plotLeft) / (plotRight - plotLeft);
+  const focalMs = view.start + t * (view.end - view.start);
+  graphZoomBy(e.deltaY < 0 ? 1.2 : 1 / 1.2, focalMs);
 }
 
 function onToggle(e: Event): void {
   const target = e.target as HTMLElement;
+  if (target.classList.contains('graph-toggle')) {
+    ui.graphOpen = (target as HTMLDetailsElement).open;
+    return;
+  }
   if (target.classList.contains('intervals-toggle')) {
     ui.intervalsOpen = (target as HTMLDetailsElement).open;
   }
@@ -201,18 +277,53 @@ function onPointerDown(e: PointerEvent): void {
     cropDragStartLeft = cropImgLeft;
     cropDragStartTop = cropImgTop;
   }
+
+  if ((e.target as HTMLElement).closest('#graph-chart-host')) {
+    const domain = currentGraphDomain();
+    graphDragging = true;
+    graphDragStartX = e.clientX;
+    graphDragStartViewStart = ui.graphViewStart ?? domain.start;
+    graphDragStartViewEnd = ui.graphViewEnd ?? domain.end;
+  }
 }
 
 function onPointerMove(e: PointerEvent): void {
-  if (!cropDragging) return;
-  const img = document.getElementById('photo-crop-img') as HTMLImageElement | null;
-  if (!img) return;
-  const minLeft = CROP_VIEWPORT - cropImgWidth;
-  const minTop = CROP_VIEWPORT - cropImgHeight;
-  cropImgLeft = Math.min(0, Math.max(minLeft, cropDragStartLeft + (e.clientX - cropDragStartX)));
-  cropImgTop = Math.min(0, Math.max(minTop, cropDragStartTop + (e.clientY - cropDragStartY)));
-  img.style.left = `${cropImgLeft}px`;
-  img.style.top = `${cropImgTop}px`;
+  if (cropDragging) {
+    const img = document.getElementById('photo-crop-img') as HTMLImageElement | null;
+    if (!img) return;
+    const minLeft = CROP_VIEWPORT - cropImgWidth;
+    const minTop = CROP_VIEWPORT - cropImgHeight;
+    cropImgLeft = Math.min(0, Math.max(minLeft, cropDragStartLeft + (e.clientX - cropDragStartX)));
+    cropImgTop = Math.min(0, Math.max(minTop, cropDragStartTop + (e.clientY - cropDragStartY)));
+    img.style.left = `${cropImgLeft}px`;
+    img.style.top = `${cropImgTop}px`;
+    return;
+  }
+
+  if (graphDragging) {
+    const host = document.getElementById('graph-chart-host');
+    if (!host) return;
+    const domain = currentGraphDomain();
+    const rect = host.getBoundingClientRect();
+    const plotFraction = (GRAPH_VB_W - GRAPH_PAD_L - GRAPH_PAD_R) / GRAPH_VB_W;
+    const plotWidthPx = rect.width * plotFraction;
+    if (plotWidthPx <= 0) return;
+    const span = graphDragStartViewEnd - graphDragStartViewStart;
+    const dxMs = (-(e.clientX - graphDragStartX) / plotWidthPx) * span;
+    let newStart = graphDragStartViewStart + dxMs;
+    let newEnd = graphDragStartViewEnd + dxMs;
+    if (newStart < domain.start) {
+      newEnd += domain.start - newStart;
+      newStart = domain.start;
+    }
+    if (newEnd > domain.end) {
+      newStart -= newEnd - domain.end;
+      newEnd = domain.end;
+    }
+    ui.graphViewStart = Math.max(domain.start, newStart);
+    ui.graphViewEnd = Math.min(domain.end, newEnd);
+    redrawGraph();
+  }
 }
 
 function onPointerUp(): void {
@@ -221,6 +332,7 @@ function onPointerUp(): void {
     pressedEl = null;
   }
   cropDragging = false;
+  graphDragging = false;
 }
 
 // При фокусе на числовое поле (пробег и т.п.) выделяем всё содержимое —
@@ -279,7 +391,7 @@ function onTouchEnd(e: TouchEvent): void {
 function render(): void {
   const car = getActiveCar();
   let page = '';
-  if (ui.route === 'home') page = renderHome(car, getAllCars());
+  if (ui.route === 'home') page = renderHome(car, getAllCars(), ui);
   else if (ui.route === 'journal') page = renderJournal(car, ui.journalFilter);
   else if (ui.route === 'fuel') page = renderFuel(car, getFuelRecordsForCar(car.id));
   else if (ui.route === 'service') page = renderService();
@@ -358,6 +470,9 @@ function onClick(e: MouseEvent): void {
     ui.photoFormOpen = false;
     cropRawDataUrl = null;
     ui.carFormOpen = false;
+    ui.graphViewStart = null;
+    ui.graphViewEnd = null;
+    ui.graphActiveDate = null;
     render();
     return;
   }
@@ -515,6 +630,31 @@ function onClick(e: MouseEvent): void {
     return;
   }
 
+  if (target.closest('[data-graph-zoom-in]')) {
+    graphZoomBy(1.6);
+    return;
+  }
+
+  if (target.closest('[data-graph-zoom-out]')) {
+    graphZoomBy(1 / 1.6);
+    return;
+  }
+
+  if (target.closest('[data-graph-reset]')) {
+    ui.graphViewStart = null;
+    ui.graphViewEnd = null;
+    redrawGraph();
+    return;
+  }
+
+  const graphPointEl = target.closest<HTMLElement>('[data-graph-point]');
+  if (graphPointEl) {
+    const date = graphPointEl.dataset.date!;
+    ui.graphActiveDate = ui.graphActiveDate === date ? null : date;
+    redrawGraph();
+    return;
+  }
+
   if (target.closest('[data-add-car]')) {
     ui.carFormOpen = true;
     render();
@@ -544,14 +684,6 @@ function onClick(e: MouseEvent): void {
 
   if (target.id === 'export-btn') {
     downloadJson();
-    return;
-  }
-
-  if (target.id === 'reset-btn') {
-    if (confirm('Точно удалить все данные из этого браузера? Это необратимо.')) {
-      resetAll();
-      ui.route = 'home';
-    }
     return;
   }
 

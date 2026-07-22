@@ -329,7 +329,3 @@ export function importJson(json) {
     data = parsed;
     notify();
 }
-export function resetAll() {
-    data = defaultData();
-    notify();
-}

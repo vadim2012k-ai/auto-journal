@@ -1,5 +1,5 @@
-import { addCar, addFuelRecord, addRecord, addRepairRecord, deleteCar, deleteFuelRecord, deleteRecord, deleteRepairRecord, exportJson, getActiveCar, getAccountInfo, getAllCars, getFuelRecordById, getFuelRecordsForCar, getRecordById, getRepairRecordById, importJson, resetAll, setCustomInterval, subscribe, switchCar, updateCar, updateFuelRecord, updateRecord, updateRepairRecord, } from './store.js';
-import { bottomNav, renderCarForm, renderFuel, renderFuelForm, renderHome, renderJournal, renderPhotoCropForm, renderRepairForm, renderService, renderSettings, renderZonePanel, renderRecordForm, } from './view.js';
+import { addCar, addFuelRecord, addRecord, addRepairRecord, deleteCar, deleteFuelRecord, deleteRecord, deleteRepairRecord, exportJson, getActiveCar, getAccountInfo, getAllCars, getAllRecordsForCar, getFuelRecordById, getFuelRecordsForCar, getRecordById, getRepairRecordById, importJson, setCustomInterval, subscribe, switchCar, updateCar, updateFuelRecord, updateRecord, updateRepairRecord, } from './store.js';
+import { bottomNav, buildGraphDomain, GRAPH_MIN_SPAN_MS, GRAPH_PAD_L, GRAPH_PAD_R, GRAPH_VB_W, renderCarForm, renderFuel, renderFuelForm, renderGraphChart, renderHome, renderJournal, renderPhotoCropForm, renderRepairForm, renderService, renderSettings, renderZonePanel, renderRecordForm, } from './view.js';
 import { formatDigitsWithSpaces, formatKm, parseSpacedNumber } from './format.js';
 import { logout } from './auth.js';
 import { lookupVin } from './vin.js';
@@ -59,7 +59,54 @@ const ui = {
     carFormOpen: false,
     intervalsOpen: false,
     photoFormOpen: false,
+    graphOpen: false,
+    graphViewStart: null,
+    graphViewEnd: null,
+    graphActiveDate: null,
 };
+// Перетаскивание/масштаб графика — своё состояние вне ui/render по той же
+// причине, что и обрезка фото: двигаем впрямую через DOM на каждый пиксель,
+// без полной перерисовки страницы.
+let graphDragging = false;
+let graphDragStartX = 0;
+let graphDragStartViewStart = 0;
+let graphDragStartViewEnd = 0;
+function currentGraphDomain() {
+    const car = getActiveCar();
+    return buildGraphDomain(car, getAllRecordsForCar(car.id));
+}
+function redrawGraph() {
+    const host = document.getElementById('graph-chart-host');
+    if (!host)
+        return;
+    const car = getActiveCar();
+    const domain = currentGraphDomain();
+    const view = { start: ui.graphViewStart ?? domain.start, end: ui.graphViewEnd ?? domain.end };
+    host.innerHTML = renderGraphChart(car, domain, view, ui.graphActiveDate);
+}
+function graphZoomBy(factor, focalMs) {
+    const domain = currentGraphDomain();
+    const curStart = ui.graphViewStart ?? domain.start;
+    const curEnd = ui.graphViewEnd ?? domain.end;
+    const curSpan = curEnd - curStart;
+    const focal = focalMs ?? (curStart + curEnd) / 2;
+    const fullSpan = domain.end - domain.start;
+    let newSpan = Math.min(fullSpan, Math.max(GRAPH_MIN_SPAN_MS, curSpan / factor));
+    const ratio = curSpan > 0 ? (focal - curStart) / curSpan : 0.5;
+    let newStart = focal - ratio * newSpan;
+    let newEnd = newStart + newSpan;
+    if (newStart < domain.start) {
+        newEnd += domain.start - newStart;
+        newStart = domain.start;
+    }
+    if (newEnd > domain.end) {
+        newStart -= newEnd - domain.end;
+        newEnd = domain.end;
+    }
+    ui.graphViewStart = Math.max(domain.start, newStart);
+    ui.graphViewEnd = Math.min(domain.end, newEnd);
+    redrawGraph();
+}
 // Обрезка фото автомобиля в кружок — своё маленькое состояние вне ui/render,
 // т.к. перетаскивание/зум двигают картинку впрямую через DOM на каждый пиксель,
 // без полной перерисовки (иначе будет тормозить и сбрасывать жест).
@@ -126,10 +173,30 @@ export function mountApp(rootEl) {
     // 'toggle' не всплывает — слушаем на фазе погружения (capture),
     // чтобы запомнить, открыт ли <details>, и не сбрасывать это при перерисовке.
     root.addEventListener('toggle', onToggle, true);
+    root.addEventListener('wheel', onWheel, { passive: false });
     render();
+}
+function onWheel(e) {
+    const host = e.target.closest('#graph-chart-host');
+    if (!host)
+        return;
+    e.preventDefault();
+    const domain = currentGraphDomain();
+    const view = { start: ui.graphViewStart ?? domain.start, end: ui.graphViewEnd ?? domain.end };
+    const rect = host.getBoundingClientRect();
+    const xVb = ((e.clientX - rect.left) / rect.width) * GRAPH_VB_W;
+    const plotLeft = GRAPH_PAD_L;
+    const plotRight = GRAPH_VB_W - GRAPH_PAD_R;
+    const t = (xVb - plotLeft) / (plotRight - plotLeft);
+    const focalMs = view.start + t * (view.end - view.start);
+    graphZoomBy(e.deltaY < 0 ? 1.2 : 1 / 1.2, focalMs);
 }
 function onToggle(e) {
     const target = e.target;
+    if (target.classList.contains('graph-toggle')) {
+        ui.graphOpen = target.open;
+        return;
+    }
     if (target.classList.contains('intervals-toggle')) {
         ui.intervalsOpen = target.open;
     }
@@ -154,19 +221,53 @@ function onPointerDown(e) {
         cropDragStartLeft = cropImgLeft;
         cropDragStartTop = cropImgTop;
     }
+    if (e.target.closest('#graph-chart-host')) {
+        const domain = currentGraphDomain();
+        graphDragging = true;
+        graphDragStartX = e.clientX;
+        graphDragStartViewStart = ui.graphViewStart ?? domain.start;
+        graphDragStartViewEnd = ui.graphViewEnd ?? domain.end;
+    }
 }
 function onPointerMove(e) {
-    if (!cropDragging)
+    if (cropDragging) {
+        const img = document.getElementById('photo-crop-img');
+        if (!img)
+            return;
+        const minLeft = CROP_VIEWPORT - cropImgWidth;
+        const minTop = CROP_VIEWPORT - cropImgHeight;
+        cropImgLeft = Math.min(0, Math.max(minLeft, cropDragStartLeft + (e.clientX - cropDragStartX)));
+        cropImgTop = Math.min(0, Math.max(minTop, cropDragStartTop + (e.clientY - cropDragStartY)));
+        img.style.left = `${cropImgLeft}px`;
+        img.style.top = `${cropImgTop}px`;
         return;
-    const img = document.getElementById('photo-crop-img');
-    if (!img)
-        return;
-    const minLeft = CROP_VIEWPORT - cropImgWidth;
-    const minTop = CROP_VIEWPORT - cropImgHeight;
-    cropImgLeft = Math.min(0, Math.max(minLeft, cropDragStartLeft + (e.clientX - cropDragStartX)));
-    cropImgTop = Math.min(0, Math.max(minTop, cropDragStartTop + (e.clientY - cropDragStartY)));
-    img.style.left = `${cropImgLeft}px`;
-    img.style.top = `${cropImgTop}px`;
+    }
+    if (graphDragging) {
+        const host = document.getElementById('graph-chart-host');
+        if (!host)
+            return;
+        const domain = currentGraphDomain();
+        const rect = host.getBoundingClientRect();
+        const plotFraction = (GRAPH_VB_W - GRAPH_PAD_L - GRAPH_PAD_R) / GRAPH_VB_W;
+        const plotWidthPx = rect.width * plotFraction;
+        if (plotWidthPx <= 0)
+            return;
+        const span = graphDragStartViewEnd - graphDragStartViewStart;
+        const dxMs = (-(e.clientX - graphDragStartX) / plotWidthPx) * span;
+        let newStart = graphDragStartViewStart + dxMs;
+        let newEnd = graphDragStartViewEnd + dxMs;
+        if (newStart < domain.start) {
+            newEnd += domain.start - newStart;
+            newStart = domain.start;
+        }
+        if (newEnd > domain.end) {
+            newStart -= newEnd - domain.end;
+            newEnd = domain.end;
+        }
+        ui.graphViewStart = Math.max(domain.start, newStart);
+        ui.graphViewEnd = Math.min(domain.end, newEnd);
+        redrawGraph();
+    }
 }
 function onPointerUp() {
     if (pressedEl) {
@@ -174,6 +275,7 @@ function onPointerUp() {
         pressedEl = null;
     }
     cropDragging = false;
+    graphDragging = false;
 }
 // При фокусе на числовое поле (пробег и т.п.) выделяем всё содержимое —
 // иначе новые цифры дописываются к старому значению (например, к "0"),
@@ -228,7 +330,7 @@ function render() {
     const car = getActiveCar();
     let page = '';
     if (ui.route === 'home')
-        page = renderHome(car, getAllCars());
+        page = renderHome(car, getAllCars(), ui);
     else if (ui.route === 'journal')
         page = renderJournal(car, ui.journalFilter);
     else if (ui.route === 'fuel')
@@ -307,6 +409,9 @@ function onClick(e) {
         ui.photoFormOpen = false;
         cropRawDataUrl = null;
         ui.carFormOpen = false;
+        ui.graphViewStart = null;
+        ui.graphViewEnd = null;
+        ui.graphActiveDate = null;
         render();
         return;
     }
@@ -446,6 +551,27 @@ function onClick(e) {
         }
         return;
     }
+    if (target.closest('[data-graph-zoom-in]')) {
+        graphZoomBy(1.6);
+        return;
+    }
+    if (target.closest('[data-graph-zoom-out]')) {
+        graphZoomBy(1 / 1.6);
+        return;
+    }
+    if (target.closest('[data-graph-reset]')) {
+        ui.graphViewStart = null;
+        ui.graphViewEnd = null;
+        redrawGraph();
+        return;
+    }
+    const graphPointEl = target.closest('[data-graph-point]');
+    if (graphPointEl) {
+        const date = graphPointEl.dataset.date;
+        ui.graphActiveDate = ui.graphActiveDate === date ? null : date;
+        redrawGraph();
+        return;
+    }
     if (target.closest('[data-add-car]')) {
         ui.carFormOpen = true;
         render();
@@ -471,13 +597,6 @@ function onClick(e) {
     }
     if (target.id === 'export-btn') {
         downloadJson();
-        return;
-    }
-    if (target.id === 'reset-btn') {
-        if (confirm('Точно удалить все данные из этого браузера? Это необратимо.')) {
-            resetAll();
-            ui.route = 'home';
-        }
         return;
     }
     if (target.id === 'logout-btn') {
