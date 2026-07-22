@@ -2,7 +2,7 @@ import { CATEGORIES, categoriesForDriveType, JOURNAL_GROUPS, SEASON_LABELS, STAT
 import { renderCarDiagram } from './diagram.js';
 import { categoryStatus, effectiveIntervalKm, kmLeft } from './status.js';
 import { formatDate, formatDigitsWithSpaces, formatKm, formatMoney, todayIso } from './format.js';
-import { getAllRecordsForCar, getRecordsForCategory } from './store.js';
+import { getAllRecordsForCar, getRecordsForCategory, getRepairsForCar } from './store.js';
 import { avgConsumption, avgConsumptionThisMonth, avgCostPerMonth, avgPricePerLiter, consumptionSpike, costPerKm, estimateRange, fuelIntervals, totalCostThisMonth, } from './fuel.js';
 function statusChip(statusKey) {
     const color = STATUS_COLORS[statusKey];
@@ -44,11 +44,16 @@ function recordDetail(r) {
 function specsLine(car) {
     const items = [
         [car.brand, car.model].filter(Boolean).join(' '),
+        car.year ? String(car.year) : '',
         car.engineType,
         car.engineVolume ? `${car.engineVolume} л` : '',
         car.enginePower ? `${car.enginePower} л.с.` : '',
     ].filter(Boolean);
     return `<div class="specs-line">${items.map(escapeHtml).join(' · ')}</div>`;
+}
+function carAvatar(car, size = 'sm') {
+    const cls = size === 'lg' ? 'car-avatar car-avatar-lg' : 'car-avatar';
+    return `<span class="${cls}">${car.photo ? `<img src="${car.photo}" alt="" />` : '🚗'}</span>`;
 }
 function carDots(cars, activeCarId) {
     if (cars.length < 2)
@@ -60,9 +65,12 @@ function carDots(cars, activeCarId) {
 export function renderHome(car, cars) {
     return `
   <header class="topbar" data-car-swipe>
-    <div>
-      <div class="topbar-title">${escapeHtml(car.name)}</div>
-      ${carDots(cars, car.id)}
+    <div class="topbar-title-row">
+      ${carAvatar(car)}
+      <div>
+        <div class="topbar-title">${escapeHtml(car.name)}</div>
+        ${carDots(cars, car.id)}
+      </div>
     </div>
   </header>
 
@@ -81,7 +89,10 @@ export function renderHome(car, cars) {
   <div class="diagram-wrap">${renderCarDiagram(car)}</div>
   ${legend()}
 
-  <p class="hint">Нажмите на узел на схеме, чтобы посмотреть историю и добавить запись.</p>
+  <div class="settings-section">
+    <button type="button" class="btn btn-secondary btn-block" data-add-repair>🔧 Записать ремонт</button>
+    <p class="hint">Для работ, которых нет на схеме — например, ремонт подвески или другая поломка.</p>
+  </div>
   `;
 }
 function recordSummary(car, category, position) {
@@ -228,39 +239,78 @@ export function renderRecordForm(car, category, position, record) {
 function journalFilterRow(active) {
     const allBtn = `<button class="filter-chip ${!active ? 'filter-chip-active' : ''}" data-journal-filter="all">Все</button>`;
     const groupBtns = JOURNAL_GROUPS.map((g) => `<button class="filter-chip ${active === g.id ? 'filter-chip-active' : ''}" data-journal-filter="${g.id}">${g.icon} ${g.label}</button>`).join('');
-    return `<div class="filter-row">${allBtn}${groupBtns}</div>`;
+    const repairBtn = `<button class="filter-chip ${active === 'repairs' ? 'filter-chip-active' : ''}" data-journal-filter="repairs">🔧 Ремонт</button>`;
+    return `<div class="filter-row">${allBtn}${groupBtns}${repairBtn}</div>`;
+}
+function recordToEntry(r) {
+    const cfg = CATEGORIES[r.category];
+    return {
+        date: r.date,
+        createdAt: r.createdAt,
+        icon: cfg.icon,
+        title: `${cfg.label}${r.position ? ` (${r.position})` : ''}`,
+        sub: `${formatKm(r.mileage)}${recordDetail(r) ? ' · ' + recordDetail(r) : ''}${r.cost ? ' · ' + r.cost + ' ₽' : ''}`,
+        notes: r.notes,
+        id: r.id,
+        kind: 'record',
+    };
+}
+function repairToEntry(r) {
+    return {
+        date: r.date,
+        createdAt: r.createdAt,
+        icon: '🔧',
+        title: escapeHtml(r.title),
+        sub: `${formatKm(r.mileage)}${repairDetail(r) ? ' · ' + repairDetail(r) : ''}${r.cost ? ' · ' + r.cost + ' ₽' : ''}`,
+        notes: r.notes,
+        id: r.id,
+        kind: 'repair',
+    };
 }
 export function renderJournal(car, filter) {
     const allRecords = getAllRecordsForCar(car.id);
-    const activeGroup = filter ? JOURNAL_GROUPS.find((g) => g.id === filter) : undefined;
-    const records = activeGroup ? allRecords.filter((r) => activeGroup.categories.includes(r.category)) : allRecords;
+    const allRepairs = getRepairsForCar(car.id);
+    const hasAny = allRecords.length > 0 || allRepairs.length > 0;
+    const activeGroup = filter && filter !== 'repairs' ? JOURNAL_GROUPS.find((g) => g.id === filter) : undefined;
+    let entries;
+    if (filter === 'repairs') {
+        entries = allRepairs.map(repairToEntry);
+    }
+    else if (activeGroup) {
+        entries = allRecords.filter((r) => activeGroup.categories.includes(r.category)).map(recordToEntry);
+    }
+    else {
+        entries = [...allRecords.map(recordToEntry), ...allRepairs.map(repairToEntry)];
+    }
+    entries.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
     let lastDate = '';
-    const rowsHtml = records
-        .map((r) => {
-        const cfg = CATEGORIES[r.category];
-        const dateHeader = r.date !== lastDate ? `<div class="journal-date-header">${formatDate(r.date)}</div>` : '';
-        lastDate = r.date;
+    const rowsHtml = entries
+        .map((e) => {
+        const dateHeader = e.date !== lastDate ? `<div class="journal-date-header">${formatDate(e.date)}</div>` : '';
+        lastDate = e.date;
+        const editAttr = e.kind === 'record' ? 'data-edit-record' : 'data-edit-repair';
+        const deleteAttr = e.kind === 'record' ? 'data-delete-record' : 'data-delete-repair';
         return `${dateHeader}<div class="journal-row">
-              <span class="icon-badge">${cfg.icon}</span>
+              <span class="icon-badge">${e.icon}</span>
               <div class="item-main">
-                <div class="item-title">${cfg.label}${r.position ? ` (${r.position})` : ''}</div>
-                <div class="item-sub">${formatKm(r.mileage)}${recordDetail(r) ? ' · ' + recordDetail(r) : ''}${r.cost ? ' · ' + r.cost + ' ₽' : ''}</div>
-                ${r.notes ? `<div class="item-notes">${escapeHtml(r.notes)}</div>` : ''}
+                <div class="item-title">${e.title}</div>
+                <div class="item-sub">${e.sub}</div>
+                ${e.notes ? `<div class="item-notes">${escapeHtml(e.notes)}</div>` : ''}
               </div>
               <span>
-                <button class="icon-btn-sm" data-edit-record data-id="${r.id}" aria-label="Редактировать">✏️</button>
-                <button class="icon-btn-sm" data-delete-record data-id="${r.id}" aria-label="Удалить">🗑</button>
+                <button class="icon-btn-sm" ${editAttr} data-id="${e.id}" aria-label="Редактировать">✏️</button>
+                <button class="icon-btn-sm" ${deleteAttr} data-id="${e.id}" aria-label="Удалить">🗑</button>
               </span>
             </div>`;
     })
         .join('');
     return `
   <header class="topbar"><div class="topbar-title">Журнал</div></header>
-  ${allRecords.length === 0 ? '' : journalFilterRow(filter)}
+  ${hasAny ? journalFilterRow(filter) : ''}
   <div class="journal-list">
-    ${allRecords.length === 0
+    ${!hasAny
         ? `<p class="hint">Пока нет ни одной записи. Добавьте первую через схему на вкладке «Гараж».</p>`
-        : records.length === 0
+        : entries.length === 0
             ? `<p class="hint">Нет записей по этому разделу.</p>`
             : rowsHtml}
   </div>`;
@@ -363,6 +413,69 @@ export function renderFuelForm(car, record) {
     </form>
   </div>`;
 }
+function repairDetail(r) {
+    return [r.brand ? escapeHtml(r.brand) : '', r.spec ? escapeHtml(r.spec) : ''].filter(Boolean).join(' · ');
+}
+export function renderRepairForm(car, record) {
+    const isEdit = !!record;
+    return `
+  <div class="sheet-backdrop" data-close-repair-form></div>
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <h2>🔧 ${isEdit ? 'Редактирование ремонта' : 'Новый ремонт'}</h2>
+      <button class="icon-btn" data-close-repair-form aria-label="Закрыть">✕</button>
+    </div>
+    <form class="sheet-body" id="repair-form" ${isEdit ? `data-record-id="${record.id}"` : ''}>
+      <label>Что делали
+        <input type="text" name="title" placeholder="напр. Замена стойки стабилизатора" value="${isEdit ? escapeHtml(record.title) : ''}" required />
+      </label>
+      <label>Дата
+        <input type="date" name="date" value="${isEdit ? record.date : todayIso()}" required />
+      </label>
+      <label>Пробег, км
+        <input type="text" name="mileage" class="num-spaced mileage-hint-input" inputmode="numeric" value="${formatDigitsWithSpaces(String(isEdit ? record.mileage : car.odometer))}" required />
+      </label>
+      <p class="hint" data-mileage-hint></p>
+      <label>Бренд / производитель
+        <input type="text" name="brand" placeholder="необязательно" value="${isEdit ? escapeHtml(record.brand ?? '') : ''}" />
+      </label>
+      <label>Артикул / спецификация
+        <input type="text" name="spec" placeholder="необязательно" value="${isEdit ? escapeHtml(record.spec ?? '') : ''}" />
+      </label>
+      <label>Стоимость, ₽
+        <input type="text" name="cost" class="num-spaced" inputmode="numeric" placeholder="необязательно" value="${isEdit && record.cost != null ? formatDigitsWithSpaces(String(record.cost)) : ''}" />
+      </label>
+      <label>Заметка
+        <textarea name="notes" rows="2" placeholder="необязательно">${isEdit ? escapeHtml(record.notes ?? '') : ''}</textarea>
+      </label>
+      <button type="submit" class="btn btn-primary btn-block">${isEdit ? 'Сохранить изменения' : 'Сохранить запись'}</button>
+    </form>
+  </div>`;
+}
+export function renderPhotoCropForm(rawDataUrl) {
+    return `
+  <div class="sheet-backdrop" data-close-photo-form></div>
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <h2>📷 Фото автомобиля</h2>
+      <button class="icon-btn" data-close-photo-form aria-label="Закрыть">✕</button>
+    </div>
+    <div class="sheet-body">
+      <div class="photo-crop-wrap">
+        <div class="photo-crop-viewport" id="photo-crop-viewport">
+          <img id="photo-crop-img" src="${rawDataUrl}" alt="" draggable="false" />
+        </div>
+      </div>
+      <label class="settings-field">Масштаб
+        <input type="range" id="photo-crop-zoom" min="100" max="300" value="100" />
+      </label>
+      <p class="hint">Перетащите фото пальцем или мышью, чтобы выбрать нужную область, и настройте масштаб.</p>
+      <button type="button" class="btn btn-primary btn-block" data-photo-crop-save>Сохранить фото</button>
+    </div>
+  </div>`;
+}
 export function renderService() {
     return `
   <header class="topbar"><div class="topbar-title">Записаться в сервис</div></header>
@@ -444,7 +557,24 @@ export function renderSettings(car, cars, account, intervalsOpen) {
     ${renderCarSwitcher(cars, car.id)}
 
     <div class="settings-section">
+      <h3>Фото автомобиля</h3>
+      <div class="photo-avatar-row">
+        ${carAvatar(car, 'lg')}
+        <div class="photo-avatar-actions">
+          <label class="btn btn-secondary btn-block" for="car-photo-input" style="text-align:center;cursor:pointer;">${car.photo ? 'Изменить фото' : 'Загрузить фото'}</label>
+          <input type="file" id="car-photo-input" accept="image/*" style="display:none" />
+          ${car.photo ? '<button type="button" class="btn btn-secondary btn-block" data-remove-photo>Удалить фото</button>' : ''}
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-section">
       <h3>Характеристики автомобиля</h3>
+      <label class="settings-field">VIN автомобиля
+        <input type="text" id="car-vin-input" maxlength="17" style="text-transform:uppercase;" value="${escapeHtml(car.vin ?? '')}" placeholder="17 символов, напр. 1HGCM82633A004352" />
+      </label>
+      <button type="button" class="btn btn-secondary btn-block" id="vin-lookup-btn">🔍 Найти по VIN (база NHTSA)</button>
+      <p class="hint" id="vin-lookup-hint"></p>
       <label class="settings-field">Название автомобиля
         <input type="text" id="car-name-input" value="${escapeHtml(car.name)}" />
       </label>
@@ -453,6 +583,9 @@ export function renderSettings(car, cars, account, intervalsOpen) {
       </label>
       <label class="settings-field">Модель
         <input type="text" id="car-model-input" value="${escapeHtml(car.model ?? '')}" placeholder="напр. Mark II" />
+      </label>
+      <label class="settings-field">Год выпуска
+        <input type="number" id="car-year-input" min="1900" max="2100" value="${car.year ?? ''}" placeholder="напр. 1998" />
       </label>
       <label class="settings-field">Тип двигателя
         <input type="text" id="car-engine-type-input" value="${escapeHtml(car.engineType ?? '')}" placeholder="напр. рядный 6-цилиндровый, бензин" />

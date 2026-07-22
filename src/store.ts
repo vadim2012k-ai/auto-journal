@@ -1,5 +1,5 @@
 import { ensureFreshSession, fetchAppData, saveAppData } from './supabase.js';
-import type { AppData, Car, FuelRecord, MaintenanceRecord, CategoryId, WheelPosition } from './types.js';
+import type { AppData, Car, FuelRecord, MaintenanceRecord, RepairRecord, CategoryId, WheelPosition } from './types.js';
 
 export interface Account {
   id: number;
@@ -32,7 +32,7 @@ function defaultData(): AppData {
     odometer: 0,
     createdAt: Date.now(),
   };
-  return { cars: [car], activeCarId: car.id, records: [], fuel: [] };
+  return { cars: [car], activeCarId: car.id, records: [], fuel: [], repairs: [] };
 }
 
 let data: AppData = defaultData();
@@ -40,6 +40,7 @@ let data: AppData = defaultData();
 function normalizeLoaded(parsed: AppData): AppData {
   if (!parsed.cars || parsed.cars.length === 0) return defaultData();
   if (!Array.isArray(parsed.fuel)) parsed.fuel = [];
+  if (!Array.isArray(parsed.repairs)) parsed.repairs = [];
   return parsed;
 }
 
@@ -209,6 +210,7 @@ export function deleteCar(carId: string): void {
   data.cars = data.cars.filter((c) => c.id !== carId);
   data.records = data.records.filter((r) => r.carId !== carId);
   data.fuel = data.fuel.filter((f) => f.carId !== carId);
+  data.repairs = data.repairs.filter((r) => r.carId !== carId);
   if (data.activeCarId === carId) data.activeCarId = data.cars[0].id;
   notify();
 }
@@ -219,8 +221,11 @@ export function updateCar(
       Car,
       | 'name'
       | 'odometer'
+      | 'vin'
+      | 'photo'
       | 'brand'
       | 'model'
+      | 'year'
       | 'engineType'
       | 'engineVolume'
       | 'enginePower'
@@ -333,6 +338,41 @@ export function deleteFuelRecord(id: string): void {
   notify();
 }
 
+export function getRepairsForCar(carId: string): RepairRecord[] {
+  return data.repairs
+    .filter((r) => r.carId === carId)
+    .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
+}
+
+export function getRepairRecordById(id: string): RepairRecord | undefined {
+  return data.repairs.find((r) => r.id === id);
+}
+
+export function addRepairRecord(input: Omit<RepairRecord, 'id' | 'createdAt'>): void {
+  const rec: RepairRecord = { ...input, id: uid(), createdAt: Date.now() };
+  data.repairs.push(rec);
+  const car = data.cars.find((c) => c.id === input.carId);
+  if (car && input.mileage > car.odometer) car.odometer = input.mileage;
+  notify();
+}
+
+export function updateRepairRecord(
+  id: string,
+  patch: Partial<Pick<RepairRecord, 'title' | 'date' | 'mileage' | 'brand' | 'spec' | 'cost' | 'notes'>>,
+): void {
+  const rec = data.repairs.find((r) => r.id === id);
+  if (!rec) return;
+  Object.assign(rec, patch);
+  const car = data.cars.find((c) => c.id === rec.carId);
+  if (car && rec.mileage > car.odometer) car.odometer = rec.mileage;
+  notify();
+}
+
+export function deleteRepairRecord(id: string): void {
+  data.repairs = data.repairs.filter((r) => r.id !== id);
+  notify();
+}
+
 export function exportJson(): string {
   return JSON.stringify(data, null, 2);
 }
@@ -341,6 +381,7 @@ export function importJson(json: string): void {
   const parsed = JSON.parse(json) as AppData;
   if (!parsed.cars || !Array.isArray(parsed.records)) throw new Error('Некорректный файл');
   if (!Array.isArray(parsed.fuel)) parsed.fuel = [];
+  if (!Array.isArray(parsed.repairs)) parsed.repairs = [];
   data = parsed;
   notify();
 }

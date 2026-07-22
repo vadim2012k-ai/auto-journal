@@ -21,7 +21,7 @@ function defaultData() {
         odometer: 0,
         createdAt: Date.now(),
     };
-    return { cars: [car], activeCarId: car.id, records: [], fuel: [] };
+    return { cars: [car], activeCarId: car.id, records: [], fuel: [], repairs: [] };
 }
 let data = defaultData();
 function normalizeLoaded(parsed) {
@@ -29,6 +29,8 @@ function normalizeLoaded(parsed) {
         return defaultData();
     if (!Array.isArray(parsed.fuel))
         parsed.fuel = [];
+    if (!Array.isArray(parsed.repairs))
+        parsed.repairs = [];
     return parsed;
 }
 function loadCache() {
@@ -190,6 +192,7 @@ export function deleteCar(carId) {
     data.cars = data.cars.filter((c) => c.id !== carId);
     data.records = data.records.filter((r) => r.carId !== carId);
     data.fuel = data.fuel.filter((f) => f.carId !== carId);
+    data.repairs = data.repairs.filter((r) => r.carId !== carId);
     if (data.activeCarId === carId)
         data.activeCarId = data.cars[0].id;
     notify();
@@ -282,6 +285,36 @@ export function deleteFuelRecord(id) {
     data.fuel = data.fuel.filter((f) => f.id !== id);
     notify();
 }
+export function getRepairsForCar(carId) {
+    return data.repairs
+        .filter((r) => r.carId === carId)
+        .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
+}
+export function getRepairRecordById(id) {
+    return data.repairs.find((r) => r.id === id);
+}
+export function addRepairRecord(input) {
+    const rec = { ...input, id: uid(), createdAt: Date.now() };
+    data.repairs.push(rec);
+    const car = data.cars.find((c) => c.id === input.carId);
+    if (car && input.mileage > car.odometer)
+        car.odometer = input.mileage;
+    notify();
+}
+export function updateRepairRecord(id, patch) {
+    const rec = data.repairs.find((r) => r.id === id);
+    if (!rec)
+        return;
+    Object.assign(rec, patch);
+    const car = data.cars.find((c) => c.id === rec.carId);
+    if (car && rec.mileage > car.odometer)
+        car.odometer = rec.mileage;
+    notify();
+}
+export function deleteRepairRecord(id) {
+    data.repairs = data.repairs.filter((r) => r.id !== id);
+    notify();
+}
 export function exportJson() {
     return JSON.stringify(data, null, 2);
 }
@@ -291,6 +324,8 @@ export function importJson(json) {
         throw new Error('Некорректный файл');
     if (!Array.isArray(parsed.fuel))
         parsed.fuel = [];
+    if (!Array.isArray(parsed.repairs))
+        parsed.repairs = [];
     data = parsed;
     notify();
 }

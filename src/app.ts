@@ -2,9 +2,11 @@ import {
   addCar,
   addFuelRecord,
   addRecord,
+  addRepairRecord,
   deleteCar,
   deleteFuelRecord,
   deleteRecord,
+  deleteRepairRecord,
   exportJson,
   getActiveCar,
   getAccountInfo,
@@ -12,6 +14,7 @@ import {
   getFuelRecordById,
   getFuelRecordsForCar,
   getRecordById,
+  getRepairRecordById,
   importJson,
   resetAll,
   setCustomInterval,
@@ -20,6 +23,7 @@ import {
   updateCar,
   updateFuelRecord,
   updateRecord,
+  updateRepairRecord,
 } from './store.js';
 import {
   bottomNav,
@@ -28,6 +32,8 @@ import {
   renderFuelForm,
   renderHome,
   renderJournal,
+  renderPhotoCropForm,
+  renderRepairForm,
   renderService,
   renderSettings,
   renderZonePanel,
@@ -35,9 +41,10 @@ import {
   type Route,
   type UiState,
 } from './view.js';
-import type { CategoryId, DriveType, SeasonType, WheelPosition, ZoneId } from './types.js';
+import type { Car, CategoryId, DriveType, SeasonType, WheelPosition, ZoneId } from './types.js';
 import { formatDigitsWithSpaces, formatKm, parseSpacedNumber } from './format.js';
 import { logout } from './auth.js';
+import { lookupVin } from './vin.js';
 
 function tireScopePositions(scope: string, base: WheelPosition): WheelPosition[] {
   if (scope === 'front') return ['FL', 'FR'];
@@ -90,9 +97,57 @@ const ui: UiState = {
   journalFilter: null,
   fuelFormOpen: false,
   editingFuelId: null,
+  repairFormOpen: false,
+  editingRepairId: null,
   carFormOpen: false,
   intervalsOpen: false,
+  photoFormOpen: false,
 };
+
+// Обрезка фото автомобиля в кружок — своё маленькое состояние вне ui/render,
+// т.к. перетаскивание/зум двигают картинку впрямую через DOM на каждый пиксель,
+// без полной перерисовки (иначе будет тормозить и сбрасывать жест).
+const CROP_VIEWPORT = 260; // px, должно совпадать с .photo-crop-viewport в CSS
+const CROP_OUTPUT = 320; // px — сторона итогового квадратного фото
+let cropRawDataUrl: string | null = null;
+let cropBaseScale = 0;
+let cropZoomMultiplier = 1;
+let cropImgLeft = 0;
+let cropImgTop = 0;
+let cropImgWidth = 0;
+let cropImgHeight = 0;
+let cropDragging = false;
+let cropDragStartX = 0;
+let cropDragStartY = 0;
+let cropDragStartLeft = 0;
+let cropDragStartTop = 0;
+
+function applyCropZoom(): void {
+  const img = document.getElementById('photo-crop-img') as HTMLImageElement | null;
+  if (!img || !img.naturalWidth) return;
+  const scale = cropBaseScale * cropZoomMultiplier;
+  cropImgWidth = img.naturalWidth * scale;
+  cropImgHeight = img.naturalHeight * scale;
+  cropImgLeft = (CROP_VIEWPORT - cropImgWidth) / 2;
+  cropImgTop = (CROP_VIEWPORT - cropImgHeight) / 2;
+  img.style.width = `${cropImgWidth}px`;
+  img.style.height = `${cropImgHeight}px`;
+  img.style.left = `${cropImgLeft}px`;
+  img.style.top = `${cropImgTop}px`;
+}
+
+function initPhotoCrop(): void {
+  const img = document.getElementById('photo-crop-img') as HTMLImageElement | null;
+  if (!img) return;
+  cropZoomMultiplier = 1;
+  const setup = () => {
+    if (!img.naturalWidth || !img.naturalHeight) return;
+    cropBaseScale = Math.max(CROP_VIEWPORT / img.naturalWidth, CROP_VIEWPORT / img.naturalHeight);
+    applyCropZoom();
+  };
+  if (img.complete) setup();
+  else img.onload = setup;
+}
 
 let root: HTMLElement;
 
@@ -107,6 +162,7 @@ export function mountApp(rootEl: HTMLElement): void {
   root.addEventListener('touchend', onTouchEnd);
   root.addEventListener('focusin', onFocusIn);
   root.addEventListener('pointerdown', onPointerDown);
+  root.addEventListener('pointermove', onPointerMove);
   root.addEventListener('pointerup', onPointerUp);
   root.addEventListener('pointercancel', onPointerUp);
   root.addEventListener('pointerleave', onPointerUp, true);
@@ -137,6 +193,26 @@ function onPointerDown(e: PointerEvent): void {
     target.classList.add('pressed');
     pressedEl = target;
   }
+
+  if ((e.target as HTMLElement).closest('#photo-crop-viewport')) {
+    cropDragging = true;
+    cropDragStartX = e.clientX;
+    cropDragStartY = e.clientY;
+    cropDragStartLeft = cropImgLeft;
+    cropDragStartTop = cropImgTop;
+  }
+}
+
+function onPointerMove(e: PointerEvent): void {
+  if (!cropDragging) return;
+  const img = document.getElementById('photo-crop-img') as HTMLImageElement | null;
+  if (!img) return;
+  const minLeft = CROP_VIEWPORT - cropImgWidth;
+  const minTop = CROP_VIEWPORT - cropImgHeight;
+  cropImgLeft = Math.min(0, Math.max(minLeft, cropDragStartLeft + (e.clientX - cropDragStartX)));
+  cropImgTop = Math.min(0, Math.max(minTop, cropDragStartTop + (e.clientY - cropDragStartY)));
+  img.style.left = `${cropImgLeft}px`;
+  img.style.top = `${cropImgTop}px`;
 }
 
 function onPointerUp(): void {
@@ -144,6 +220,7 @@ function onPointerUp(): void {
     pressedEl.classList.remove('pressed');
     pressedEl = null;
   }
+  cropDragging = false;
 }
 
 // При фокусе на числовое поле (пробег и т.п.) выделяем всё содержимое —
@@ -226,6 +303,11 @@ function render(): void {
   } else if (ui.fuelFormOpen) {
     const editingFuel = ui.editingFuelId ? getFuelRecordById(ui.editingFuelId) : undefined;
     overlay = renderFuelForm(car, editingFuel);
+  } else if (ui.repairFormOpen) {
+    const editingRepair = ui.editingRepairId ? getRepairRecordById(ui.editingRepairId) : undefined;
+    overlay = renderRepairForm(car, editingRepair);
+  } else if (ui.photoFormOpen && cropRawDataUrl) {
+    overlay = renderPhotoCropForm(cropRawDataUrl);
   } else if (ui.carFormOpen) {
     overlay = renderCarForm();
   }
@@ -235,6 +317,8 @@ function render(): void {
     ${bottomNav(ui.route)}
     ${overlay}
   `;
+
+  if (ui.photoFormOpen && cropRawDataUrl) initPhotoCrop();
 }
 
 function onClick(e: MouseEvent): void {
@@ -269,6 +353,10 @@ function onClick(e: MouseEvent): void {
     ui.editingRecordId = null;
     ui.fuelFormOpen = false;
     ui.editingFuelId = null;
+    ui.repairFormOpen = false;
+    ui.editingRepairId = null;
+    ui.photoFormOpen = false;
+    cropRawDataUrl = null;
     ui.carFormOpen = false;
     render();
     return;
@@ -363,6 +451,70 @@ function onClick(e: MouseEvent): void {
     return;
   }
 
+  if (target.closest('[data-add-repair]')) {
+    ui.repairFormOpen = true;
+    ui.editingRepairId = null;
+    render();
+    return;
+  }
+
+  if (target.closest('[data-close-repair-form]')) {
+    ui.repairFormOpen = false;
+    ui.editingRepairId = null;
+    render();
+    return;
+  }
+
+  const editRepairBtn = target.closest<HTMLElement>('[data-edit-repair]');
+  if (editRepairBtn) {
+    ui.editingRepairId = editRepairBtn.dataset.id!;
+    ui.repairFormOpen = true;
+    render();
+    return;
+  }
+
+  const delRepairBtn = target.closest<HTMLElement>('[data-delete-repair]');
+  if (delRepairBtn) {
+    const id = delRepairBtn.dataset.id!;
+    if (confirm('Удалить эту запись о ремонте?')) {
+      deleteRepairRecord(id);
+    }
+    return;
+  }
+
+  if (target.closest('[data-close-photo-form]')) {
+    ui.photoFormOpen = false;
+    cropRawDataUrl = null;
+    render();
+    return;
+  }
+
+  if (target.closest('[data-photo-crop-save]')) {
+    const img = document.getElementById('photo-crop-img') as HTMLImageElement | null;
+    if (img && cropImgWidth && cropImgHeight) {
+      const factor = CROP_OUTPUT / CROP_VIEWPORT;
+      const canvas = document.createElement('canvas');
+      canvas.width = CROP_OUTPUT;
+      canvas.height = CROP_OUTPUT;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(img, cropImgLeft * factor, cropImgTop * factor, cropImgWidth * factor, cropImgHeight * factor);
+        updateCar({ photo: canvas.toDataURL('image/jpeg', 0.85) });
+      }
+    }
+    ui.photoFormOpen = false;
+    cropRawDataUrl = null;
+    render();
+    return;
+  }
+
+  if (target.closest('[data-remove-photo]')) {
+    if (confirm('Удалить фото автомобиля?')) {
+      updateCar({ photo: undefined });
+    }
+    return;
+  }
+
   if (target.closest('[data-add-car]')) {
     ui.carFormOpen = true;
     render();
@@ -425,12 +577,59 @@ function onClick(e: MouseEvent): void {
     }
     return;
   }
+
+  if (target.id === 'vin-lookup-btn') {
+    const input = document.getElementById('car-vin-input') as HTMLInputElement | null;
+    const hint = document.getElementById('vin-lookup-hint');
+    const btn = target as HTMLButtonElement;
+    if (!input) return;
+    const vin = input.value.trim().toUpperCase();
+    input.value = vin;
+    if (hint) hint.textContent = 'Ищу в базе NHTSA…';
+    btn.disabled = true;
+
+    lookupVin(vin).then((result) => {
+      btn.disabled = false;
+      if (!result.ok) {
+        const hintEl = document.getElementById('vin-lookup-hint');
+        if (hintEl) hintEl.textContent = `⚠️ ${result.error}`;
+        return;
+      }
+
+      const patch: Partial<
+        Pick<Car, 'vin' | 'brand' | 'model' | 'year' | 'engineType' | 'engineVolume' | 'enginePower' | 'driveType'>
+      > = { vin };
+      if (result.brand) patch.brand = result.brand;
+      if (result.model) patch.model = result.model;
+      if (result.year) patch.year = result.year;
+      if (result.engineType) patch.engineType = result.engineType;
+      if (result.engineVolume) patch.engineVolume = result.engineVolume;
+      if (result.enginePower) patch.enginePower = result.enginePower;
+      if (result.driveType) patch.driveType = result.driveType;
+      updateCar(patch);
+
+      // updateCar уже перерисовал страницу — хватаем СВЕЖИЙ элемент подсказки.
+      const freshHint = document.getElementById('vin-lookup-hint');
+      if (freshHint) {
+        const found = [result.brand, result.model, result.year].filter(Boolean).join(' ');
+        freshHint.textContent = `✓ Найдено: ${found}`;
+        setTimeout(() => {
+          freshHint.textContent = '';
+        }, 5000);
+      }
+    });
+    return;
+  }
 }
 
 function onSubmit(e: SubmitEvent): void {
   const form = e.target as HTMLFormElement;
   if (form.id === 'fuel-form') {
     onSubmitFuel(form, e);
+    return;
+  }
+  if (form.id === 'repair-form') {
+    onSubmitRepair(form, e);
     return;
   }
   if (form.id === 'car-form') {
@@ -503,9 +702,42 @@ function onSubmitFuel(form: HTMLFormElement, e: SubmitEvent): void {
   render();
 }
 
+function onSubmitRepair(form: HTMLFormElement, e: SubmitEvent): void {
+  e.preventDefault();
+  const car = getActiveCar();
+  const fd = new FormData(form);
+  const recordId = form.dataset.recordId;
+
+  const values = {
+    title: String(fd.get('title') || '').trim(),
+    date: String(fd.get('date')),
+    mileage: parseSpacedNumber(String(fd.get('mileage') || '')),
+    brand: String(fd.get('brand') || '') || undefined,
+    spec: String(fd.get('spec') || '') || undefined,
+    cost: fd.get('cost') && String(fd.get('cost')).replace(/\D/g, '') ? parseSpacedNumber(String(fd.get('cost'))) : undefined,
+    notes: String(fd.get('notes') || '') || undefined,
+  };
+
+  if (recordId) {
+    updateRepairRecord(recordId, values);
+  } else {
+    addRepairRecord({ carId: car.id, ...values });
+  }
+
+  ui.repairFormOpen = false;
+  ui.editingRepairId = null;
+  render();
+}
+
 function onInput(e: Event): void {
   const target = e.target as HTMLElement;
   if (!(target instanceof HTMLInputElement)) return;
+
+  if (target.id === 'photo-crop-zoom') {
+    cropZoomMultiplier = Number((target as HTMLInputElement).value) / 100;
+    applyCropZoom();
+    return;
+  }
 
   if (target.id === 'trip-distance-input') {
     const distance = Number(target.value);
@@ -588,6 +820,11 @@ function onChange(e: Event): void {
     return;
   }
 
+  if (target.id === 'car-vin-input') {
+    updateCar({ vin: (target as HTMLInputElement).value.trim().toUpperCase() || undefined });
+    return;
+  }
+
   if (target.id === 'car-brand-input') {
     updateCar({ brand: (target as HTMLInputElement).value.trim() || undefined });
     return;
@@ -595,6 +832,13 @@ function onChange(e: Event): void {
 
   if (target.id === 'car-model-input') {
     updateCar({ model: (target as HTMLInputElement).value.trim() || undefined });
+    return;
+  }
+
+  if (target.id === 'car-year-input') {
+    const raw = (target as HTMLInputElement).value;
+    const val = raw ? Number(raw) : NaN;
+    updateCar({ year: Number.isFinite(val) ? val : undefined });
     return;
   }
 
@@ -633,6 +877,21 @@ function onChange(e: Event): void {
     const category = (target as HTMLElement).dataset.category as CategoryId;
     const digits = (target as HTMLInputElement).value.replace(/\D/g, '');
     setCustomInterval(category, digits ? Number(digits) : undefined);
+    return;
+  }
+
+  if (target.id === 'car-photo-input') {
+    const input = target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      cropRawDataUrl = reader.result as string;
+      ui.photoFormOpen = true;
+      render();
+    };
+    reader.readAsDataURL(file);
     return;
   }
 

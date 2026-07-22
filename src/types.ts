@@ -13,6 +13,7 @@ export type CategoryId =
   | 'diff_oil'
   | 'transfer_case_oil'
   | 'coolant'
+  | 'radiator_wash'
   | 'brake_fluid'
   | 'brake_pads_front'
   | 'brake_pads_rear'
@@ -70,8 +71,13 @@ export interface Car {
   odometer: number;
   createdAt: number;
   /** Характеристики автомобиля — заполняются опционально в настройках */
+  vin?: string;
+  /** Фото автомобиля — квадратная картинка (data URL), обрезанная в настройках; кружком её показывает CSS */
+  photo?: string;
   brand?: string;
   model?: string;
+  /** Год выпуска */
+  year?: number;
   engineType?: string;
   /** Объём двигателя, л */
   engineVolume?: number;
@@ -99,9 +105,29 @@ export interface FuelRecord {
   createdAt: number;
 }
 
+/**
+ * Свободная запись о ремонте/доработке — то, чего нет в списке плановых
+ * категорий на схеме (например, замена подвески после поломки). Название
+ * работы пользователь вводит сам, а не выбирает из готового списка.
+ */
+export interface RepairRecord {
+  id: string;
+  carId: string;
+  /** Что делали — свободный текст, например "Замена стойки стабилизатора" */
+  title: string;
+  date: string; // YYYY-MM-DD
+  mileage: number;
+  brand?: string;
+  spec?: string;
+  cost?: number;
+  notes?: string;
+  createdAt: number;
+}
+
 export interface AppData {
   cars: Car[];
   activeCarId: string | null;
   records: MaintenanceRecord[];
   fuel: FuelRecord[];
+  repairs: RepairRecord[];
 }
