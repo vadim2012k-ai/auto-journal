@@ -71,10 +71,10 @@ export function renderHome(car, cars) {
   <div class="odometer-card">
     <label for="odometer-input">Текущий пробег</label>
     <div class="odometer-row">
-      <input id="odometer-input" class="num-spaced" type="text" inputmode="numeric" value="${formatDigitsWithSpaces(String(car.odometer))}" />
+      <input id="odometer-input" class="num-spaced" type="text" inputmode="numeric" value="${formatDigitsWithSpaces(String(car.odometer))}" data-original="${car.odometer}" />
       <span>км</span>
     </div>
-    <button type="button" class="btn btn-primary btn-block" id="save-odometer-btn">Сохранить пробег</button>
+    <button type="button" class="btn btn-primary btn-block" id="save-odometer-btn" hidden>Сохранить пробег</button>
     <p class="hint" id="odometer-save-hint"></p>
   </div>
 

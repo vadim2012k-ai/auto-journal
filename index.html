@@ -5,11 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
   <meta name="theme-color" content="#0f172a" />
   <title>Автожурнал — учёт обслуживания авто</title>
-<link rel="stylesheet" href="./styles.css?v=20260722b" />
+
+  <!-- PWA: позволяет добавить сайт на домашний экран как приложение, без адресной строки -->
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="./icons/icon-180.png" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Автожурнал" />
+
+<link rel="stylesheet" href="./styles.css?v=20260722c" />
 </head>
 <body>
   <div id="app"></div>
-  <div style="position:fixed;bottom:2px;right:6px;font:11px monospace;color:#94a3b8;opacity:0.6;z-index:9999;pointer-events:none;">build 20260722b</div>
-<script type="module" src="./dist/main.js?v=20260722b"></script>
+  <div style="position:fixed;bottom:2px;right:6px;font:11px monospace;color:#94a3b8;opacity:0.6;z-index:9999;pointer-events:none;">build 20260722c</div>
+<script type="module" src="./dist/main.js?v=20260722c"></script>
 </body>
 </html>

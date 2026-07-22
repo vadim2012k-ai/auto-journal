@@ -481,6 +481,14 @@ function onInput(e) {
             }
         }
     }
+    if (target.id === 'odometer-input') {
+        const btn = document.getElementById('save-odometer-btn');
+        if (btn) {
+            const original = Number(target.dataset.original || '0');
+            const current = parseSpacedNumber(target.value);
+            btn.hidden = current === original;
+        }
+    }
     if (!target.classList.contains('num-spaced'))
         return;
     const caret = target.selectionStart ?? target.value.length;
