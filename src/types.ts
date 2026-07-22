@@ -16,6 +16,8 @@ export type CategoryId =
   | 'brake_fluid'
   | 'brake_pads_front'
   | 'brake_pads_rear'
+  | 'brake_disc_front'
+  | 'brake_disc_rear'
   | 'tires';
 
 export type ZoneId =

@@ -1,7 +1,22 @@
 import { mountApp } from './app.js';
 import { initForAccount } from './store.js';
-import { hasSession, login, register } from './auth.js';
-import { renderAuthScreen, renderCheckEmailScreen, type AuthMode } from './authView.js';
+import {
+  completeRecoverySignIn,
+  hasSession,
+  login,
+  register,
+  requestPasswordReset,
+  updatePassword,
+  type RecoveryTokens,
+} from './auth.js';
+import {
+  renderAuthScreen,
+  renderCheckEmailScreen,
+  renderNewPasswordScreen,
+  renderRecoverScreen,
+  renderRecoverSentScreen,
+  type AuthMode,
+} from './authView.js';
 
 const root = document.getElementById('app');
 
@@ -24,6 +39,38 @@ const STRENGTH_LABEL: Record<PasswordStrength, string> = {
   medium: 'средний',
   strong: 'надёжный',
 };
+
+/** Переключатели "показать/скрыть пароль" — общие для всех экранов с паролем. */
+function wirePasswordToggles(scope: HTMLElement): void {
+  scope.querySelectorAll<HTMLButtonElement>('[data-toggle-password]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const input = btn.previousElementSibling as HTMLInputElement | null;
+      if (!input) return;
+      const showing = input.type === 'text';
+      input.type = showing ? 'password' : 'text';
+      btn.textContent = showing ? '👁️' : '🙈';
+      btn.setAttribute('aria-label', showing ? 'Показать пароль' : 'Скрыть пароль');
+    });
+  });
+}
+
+/** Живой индикатор сложности пароля — общий для регистрации и смены пароля. */
+function wireStrengthLive(scope: HTMLElement): void {
+  const strengthText = scope.querySelector<HTMLElement>('[data-strength-text]');
+  const passwordInput = scope.querySelector<HTMLInputElement>('.password-input');
+  if (!strengthText || !passwordInput) return;
+  passwordInput.addEventListener('input', () => {
+    const value = passwordInput.value;
+    if (!value) {
+      strengthText.textContent = 'Надёжность пароля: —';
+      strengthText.removeAttribute('data-level');
+      return;
+    }
+    const level = passwordStrength(value);
+    strengthText.textContent = `Надёжность пароля: ${STRENGTH_LABEL[level]}`;
+    strengthText.setAttribute('data-level', level);
+  });
+}
 
 function renderLoading(): void {
   if (!root) return;
@@ -64,32 +111,12 @@ function wireAuthEvents(mode: AuthMode): void {
     });
   });
 
-  root.querySelectorAll<HTMLButtonElement>('[data-toggle-password]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const input = btn.previousElementSibling as HTMLInputElement | null;
-      if (!input) return;
-      const showing = input.type === 'text';
-      input.type = showing ? 'password' : 'text';
-      btn.textContent = showing ? '👁️' : '🙈';
-      btn.setAttribute('aria-label', showing ? 'Показать пароль' : 'Скрыть пароль');
-    });
-  });
+  wirePasswordToggles(root);
+  if (mode === 'register') wireStrengthLive(root);
 
-  const strengthText = root.querySelector<HTMLElement>('[data-strength-text]');
-  const passwordInput = root.querySelector<HTMLInputElement>('.password-input');
-  if (mode === 'register' && strengthText && passwordInput) {
-    passwordInput.addEventListener('input', () => {
-      const value = passwordInput.value;
-      if (!value) {
-        strengthText.textContent = 'Надёжность пароля: —';
-        strengthText.removeAttribute('data-level');
-        return;
-      }
-      const level = passwordStrength(value);
-      strengthText.textContent = `Надёжность пароля: ${STRENGTH_LABEL[level]}`;
-      strengthText.setAttribute('data-level', level);
-    });
-  }
+  root.querySelector<HTMLButtonElement>('[data-forgot-password]')?.addEventListener('click', () => {
+    renderRecover(null);
+  });
 
   const form = root.querySelector<HTMLFormElement>('#auth-form');
   form?.addEventListener('submit', (e) => {
@@ -141,7 +168,101 @@ function wireAuthEvents(mode: AuthMode): void {
   });
 }
 
+function renderRecover(error: string | null): void {
+  if (!root) return;
+  root.innerHTML = renderRecoverScreen(error);
+  root.querySelectorAll<HTMLButtonElement>('[data-auth-tab]').forEach((btn) => {
+    btn.addEventListener('click', () => renderAuth('login', null));
+  });
+
+  const form = root.querySelector<HTMLFormElement>('#recover-form');
+  form?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const submitBtn = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+    if (submitBtn) submitBtn.disabled = true;
+    const email = String(new FormData(form).get('email') || '');
+    requestPasswordReset(email).then((result) => {
+      if (!result.ok) {
+        if (submitBtn) submitBtn.disabled = false;
+        renderRecover(result.error);
+        return;
+      }
+      renderRecoverSent(email);
+    });
+  });
+}
+
+function renderRecoverSent(email: string): void {
+  if (!root) return;
+  root.innerHTML = renderRecoverSentScreen(email);
+  root.querySelectorAll<HTMLButtonElement>('[data-auth-tab]').forEach((btn) => {
+    btn.addEventListener('click', () => renderAuth('login', null));
+  });
+}
+
+function renderNewPassword(tokens: RecoveryTokens, error: string | null): void {
+  if (!root) return;
+  root.innerHTML = renderNewPasswordScreen(error);
+  wirePasswordToggles(root);
+  wireStrengthLive(root);
+
+  const form = root.querySelector<HTMLFormElement>('#new-password-form');
+  form?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const submitBtn = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+    const fd = new FormData(form);
+    const password = String(fd.get('password') || '');
+    const password2 = String(fd.get('password2') || '');
+
+    if (password !== password2) {
+      renderNewPassword(tokens, 'Пароли не совпадают');
+      return;
+    }
+    if (passwordStrength(password) === 'weak') {
+      renderNewPassword(
+        tokens,
+        'Пароль слишком простой. Используйте минимум 8 символов и сочетайте буквы разного регистра, цифры или символы.',
+      );
+      return;
+    }
+    if (submitBtn) submitBtn.disabled = true;
+
+    updatePassword(tokens.accessToken, password).then(async (result) => {
+      if (!result.ok) {
+        renderNewPassword(tokens, result.error);
+        return;
+      }
+      const session = await completeRecoverySignIn(tokens);
+      if (!session) {
+        renderAuth('login', 'Пароль изменён — войдите с новым паролем');
+        return;
+      }
+      startApp();
+    });
+  });
+}
+
+/** Ссылка из письма восстановления возвращает токены в хэше адреса (#access_token=...&type=recovery). */
+function parseRecoveryHash(): RecoveryTokens | null {
+  const raw = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash;
+  if (!raw) return null;
+  const params = new URLSearchParams(raw);
+  if (params.get('type') !== 'recovery') return null;
+  const accessToken = params.get('access_token');
+  const refreshToken = params.get('refresh_token');
+  if (!accessToken || !refreshToken) return null;
+  return { accessToken, refreshToken, expiresIn: Number(params.get('expires_in')) || 3600 };
+}
+
 function boot(): void {
+  const recovery = parseRecoveryHash();
+  if (recovery) {
+    // Убираем токены из адресной строки, чтобы они не остались в истории браузера.
+    history.replaceState(null, '', window.location.pathname + window.location.search);
+    renderNewPassword(recovery, null);
+    return;
+  }
+
   if (hasSession()) {
     startApp();
   } else {

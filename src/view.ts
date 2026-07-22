@@ -116,6 +116,8 @@ export function renderHome(car: Car, cars: Car[]): string {
       <input id="odometer-input" class="num-spaced" type="text" inputmode="numeric" value="${formatDigitsWithSpaces(String(car.odometer))}" />
       <span>км</span>
     </div>
+    <button type="button" class="btn btn-primary btn-block" id="save-odometer-btn">Сохранить пробег</button>
+    <p class="hint" id="odometer-save-hint"></p>
   </div>
 
   <div class="diagram-wrap">${renderCarDiagram(car)}</div>

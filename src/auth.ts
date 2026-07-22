@@ -3,16 +3,20 @@
 // человекочитаемые обёртки для остального приложения.
 
 import {
+  completeRecoverySignIn,
   ensureFreshSession,
   getStoredSession,
+  requestPasswordReset as requestPasswordResetRaw,
   signIn,
   signOut,
   signUp,
+  updatePassword as updatePasswordRaw,
   type AuthOutcome,
+  type RecoveryTokens,
   type Session,
 } from './supabase.js';
 
-export type { AuthOutcome, Session };
+export type { AuthOutcome, RecoveryTokens, Session };
 
 export async function register(email: string, password: string): Promise<AuthOutcome> {
   const normalized = email.trim().toLowerCase();
@@ -33,4 +37,16 @@ export function hasSession(): boolean {
   return getStoredSession() !== null;
 }
 
-export { ensureFreshSession };
+export async function requestPasswordReset(email: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const redirectTo = window.location.origin + window.location.pathname;
+  return requestPasswordResetRaw(email.trim().toLowerCase(), redirectTo);
+}
+
+export async function updatePassword(
+  accessToken: string,
+  newPassword: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  return updatePasswordRaw(accessToken, newPassword);
+}
+
+export { completeRecoverySignIn, ensureFreshSession };

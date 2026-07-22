@@ -105,6 +105,64 @@ export async function signIn(email, password) {
 export function signOut() {
     storeSession(null);
 }
+export async function requestPasswordReset(email, redirectTo) {
+    try {
+        const res = await fetch(`${SUPABASE_URL}/auth/v1/recover`, {
+            method: 'POST',
+            headers: authHeaders(),
+            body: JSON.stringify({ email, redirect_to: redirectTo }),
+        });
+        if (!res.ok) {
+            const raw = (await res.json().catch(() => ({})));
+            return { ok: false, error: friendlyAuthError(raw, res.status) };
+        }
+        return { ok: true };
+    }
+    catch {
+        return { ok: false, error: 'Нет соединения с сервером — проверьте интернет' };
+    }
+}
+/** Меняет пароль по токену из ссылки восстановления (ещё не полноценная сессия). */
+export async function updatePassword(accessToken, newPassword) {
+    try {
+        const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+            method: 'PUT',
+            headers: authHeaders(accessToken),
+            body: JSON.stringify({ password: newPassword }),
+        });
+        if (!res.ok) {
+            const raw = (await res.json().catch(() => ({})));
+            return { ok: false, error: friendlyAuthError(raw, res.status) };
+        }
+        return { ok: true };
+    }
+    catch {
+        return { ok: false, error: 'Нет соединения с сервером — проверьте интернет' };
+    }
+}
+/** После смены пароля превращаем токены из ссылки восстановления в обычную сессию. */
+export async function completeRecoverySignIn(tokens) {
+    try {
+        const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+            headers: authHeaders(tokens.accessToken),
+        });
+        if (!res.ok)
+            return null;
+        const user = (await res.json());
+        const session = {
+            accessToken: tokens.accessToken,
+            refreshToken: tokens.refreshToken,
+            expiresAt: Math.floor(Date.now() / 1000) + tokens.expiresIn,
+            userId: user.id,
+            email: user.email,
+        };
+        storeSession(session);
+        return session;
+    }
+    catch {
+        return null;
+    }
+}
 async function refreshSession() {
     const current = getStoredSession();
     if (!current)

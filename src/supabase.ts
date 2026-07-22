@@ -126,6 +126,75 @@ export function signOut(): void {
   storeSession(null);
 }
 
+export async function requestPasswordReset(
+  email: string,
+  redirectTo: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/recover`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ email, redirect_to: redirectTo }),
+    });
+    if (!res.ok) {
+      const raw = (await res.json().catch(() => ({}))) as RawAuthResponse;
+      return { ok: false, error: friendlyAuthError(raw, res.status) };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, error: 'Нет соединения с сервером — проверьте интернет' };
+  }
+}
+
+export interface RecoveryTokens {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+}
+
+/** Меняет пароль по токену из ссылки восстановления (ещё не полноценная сессия). */
+export async function updatePassword(
+  accessToken: string,
+  newPassword: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      method: 'PUT',
+      headers: authHeaders(accessToken),
+      body: JSON.stringify({ password: newPassword }),
+    });
+    if (!res.ok) {
+      const raw = (await res.json().catch(() => ({}))) as RawAuthResponse;
+      return { ok: false, error: friendlyAuthError(raw, res.status) };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, error: 'Нет соединения с сервером — проверьте интернет' };
+  }
+}
+
+/** После смены пароля превращаем токены из ссылки восстановления в обычную сессию. */
+export async function completeRecoverySignIn(tokens: RecoveryTokens): Promise<Session | null> {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: authHeaders(tokens.accessToken),
+    });
+    if (!res.ok) return null;
+    const user = (await res.json()) as { id: string; email: string };
+    const session: Session = {
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      expiresAt: Math.floor(Date.now() / 1000) + tokens.expiresIn,
+      userId: user.id,
+      email: user.email,
+    };
+    storeSession(session);
+    return session;
+  } catch {
+    return null;
+  }
+}
+
 async function refreshSession(): Promise<Session | null> {
   const current = getStoredSession();
   if (!current) return null;

@@ -512,3 +512,16 @@ html, body {
 .password-strength-hint[data-level="weak"] { color: var(--danger); }
 .password-strength-hint[data-level="medium"] { color: #f59e0b; }
 .password-strength-hint[data-level="strong"] { color: #22c55e; }
+
+.link-btn {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 10px 0 0;
+  text-align: center;
+}

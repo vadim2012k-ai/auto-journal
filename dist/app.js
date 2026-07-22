@@ -342,6 +342,24 @@ function onClick(e) {
         location.reload();
         return;
     }
+    if (target.id === 'save-odometer-btn') {
+        const input = document.getElementById('odometer-input');
+        if (!input)
+            return;
+        const val = parseSpacedNumber(input.value);
+        if (Number.isNaN(val))
+            return;
+        updateCar({ odometer: val });
+        // updateCar уже перерисовал страницу — хватаем СВЕЖИЙ элемент подсказки.
+        const hint = document.getElementById('odometer-save-hint');
+        if (hint) {
+            hint.textContent = '✓ Сохранено';
+            setTimeout(() => {
+                hint.textContent = '';
+            }, 2000);
+        }
+        return;
+    }
 }
 function onSubmit(e) {
     const form = e.target;
